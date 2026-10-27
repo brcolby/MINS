@@ -416,18 +416,15 @@ vector<double> State::interpolation_clone_times() const {
 }
 
 void State::build_polynomial_data(bool fej) {
-
+  const vector<double> clone_times = interpolation_clone_times();
   // return if unable to build polynomial
-  if ((int)clones.size() < op->intr_order + 1) {
+  if ((int)clone_times.size() < op->intr_order + 1) {
     PRINT4(RED "[State]::build_polynomial_data Not enough clones for interpolation. " RESET);
     PRINT4(RED "#clones: %d, #required: %d\n" RESET, (int)clones.size(), op->intr_order + 1);
     _polynomial_est.clear();
     _polynomial_fej.clear();
     return;
   }
-
-  // Get the times of our pose clones
-  const vector<double> clone_times = interpolation_clone_times();
 
   // Build data for each possible starting polynomial
   map<double, State::polynomial_data> polynomial;
@@ -944,40 +941,27 @@ double State::oldest_clone_time() {
 }
 
 double State::oldest_2nd_clone_time() {
-  if (clones.size() < 2)
-    return -INFINITY;
-
+  const double first = oldest_clone_time();
   double t_2nd;
-  bool success = closest_newer_clone_time(oldest_clone_time(), t_2nd);
-  assert(success);
-  return t_2nd;
+  return std::isfinite(first) && closest_newer_clone_time(first, t_2nd) ? t_2nd : -INFINITY;
 }
 
 double State::oldest_3rd_clone_time() {
-  if (clones.size() < 3)
-    return -INFINITY;
-
+  const double second = oldest_2nd_clone_time();
   double t_3rd;
-  bool success = closest_newer_clone_time(oldest_2nd_clone_time(), t_3rd);
-  assert(success);
-  return t_3rd;
+  return std::isfinite(second) && closest_newer_clone_time(second, t_3rd) ? t_3rd : -INFINITY;
 }
 
 double State::newest_clone_time() {
-  if (clones.empty())
-    return -INFINITY;
-
-  return clones.rbegin()->first;
+  for (auto clone = clones.rbegin(); clone != clones.rend(); ++clone)
+    if (!retained_clones.count(clone->first)) return clone->first;
+  return -INFINITY;
 }
 
 double State::newest_2nd_clone_time() {
-  if (clones.size() < 2)
-    return -INFINITY;
-
+  const double newest = newest_clone_time();
   double t_2nd;
-  bool success = closest_older_clone_time(newest_clone_time(), t_2nd);
-  assert(success);
-  return t_2nd;
+  return std::isfinite(newest) && closest_older_clone_time(newest, t_2nd) ? t_2nd : -INFINITY;
 }
 
 bool State::closest_clone_time(double t_given, double &t) {
@@ -1233,7 +1217,8 @@ bool State::have_clone(double t_given) { return clones.find(t_given) != clones.e
 
 bool State::have_cpi(double t_given) {
   // return true if we have cpi at requested time
-  if (cpis.find(t_given) != cpis.end() && clones.find(cpis.at(t_given).clone_t) != clones.end()) {
+  if (cpis.find(t_given) != cpis.end() && clones.find(cpis.at(t_given).clone_t) != clones.end() &&
+      !retained_clones.count(cpis.at(t_given).clone_t)) {
     return true;
   }
 

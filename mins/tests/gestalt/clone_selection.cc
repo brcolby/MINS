@@ -56,7 +56,31 @@ int main() try {
       }
     }
   }
+  // Retain a stochastic reference pose for an external operating constraint.
+  // It participates in covariance/frame changes, never sensor interpolation.
+  state.retained_clones.insert(1);
+  if (state.interpolation_clone_times() != std::vector<double>({2, 3, 4}) ||
+      state.oldest_clone_time() != 2 || state.oldest_keyframe_time() != 2 ||
+      !state.closest_clone_time(1, output) || output != 2)
+    throw std::runtime_error("retained geometry entered acquisition history");
+  double older, newer;
+  if (state.bounding_times(1.5, older, newer) || state.bounding_poses_n_check(3, 2.5) ||
+      state.closest_older_clone_time(2, output))
+    throw std::runtime_error("interpolation bridged retained geometry and sensor window");
+  state.keyframes.clear(); // GPS initialization must not release another owner's reference.
+  if (state.oldest_clone_time() != 2 || !state.retained_clones.count(1))
+    throw std::runtime_error("GPS keyframe cleanup changed reference ownership");
+  state.clones.erase(2);
+  state.clones.erase(3);
+  if (std::isfinite(state.oldest_2nd_clone_time()) ||
+      std::isfinite(state.oldest_3rd_clone_time()) ||
+      std::isfinite(state.newest_2nd_clone_time()) || state.newest_clone_time() != 4)
+    throw std::runtime_error("reference counted as a second sensor clone");
+  state.clones.erase(4);
+  if (std::isfinite(state.newest_clone_time()) || state.closest_clone_time(1, output))
+    throw std::runtime_error("reference-only state reported sensor history");
   state.clones.clear();
+  state.retained_clones.clear();
   state.clones[4] = state.imu->pose();
   if (state.closest_clone_time_not_imu(4, output))
     throw std::runtime_error("current IMU pose accepted as an independent clone");
