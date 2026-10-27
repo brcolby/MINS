@@ -21,6 +21,12 @@ short valid segments no longer wait for the pre-gap clone to age out. The
 `wheel_resumes_after_invalid_interval` regression exercises the actual updater,
 including a nonzero sensor time offset and prevention of repeated information.
 
+Auxiliary stationary detection can read `get_observation_history()` to retain
+tracks already consumed by the SLAM/MSCKF measurement updates. This reuses the
+existing bounded archive; it adds no feature tracker and does not change filter
+measurement reuse. The regression verifies both retained stationary evidence
+and fresh image motion after measurement consumption.
+
 Standalone native regressions (Eigen 3 and OpenCV 4 required):
 
 ```sh

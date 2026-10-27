@@ -174,6 +174,13 @@ DB_ptr UpdaterCamera::get_tracking_database(int cam_id) {
   return trackFEATS.at(cam_id)->get_feature_database();
 }
 
+DB_ptr UpdaterCamera::get_observation_history(int cam_id) {
+  // The filter extracts and deletes measurements from the live tracker DB.
+  // Auxiliary motion checks need the existing bounded archive, including the
+  // observations already used by SLAM/MSCKF. This adds no tracker or copy.
+  return trackDATABASE.at(cam_id);
+}
+
 void UpdaterCamera::try_update(int cam_id) {
   // Return if we do not have polynomial constructed yet.
   if (!state->have_polynomial())

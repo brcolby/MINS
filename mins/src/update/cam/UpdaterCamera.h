@@ -53,6 +53,8 @@ public:
   cv::Mat get_track_img(int cam_id);
   // Read the existing tracker for stationary detection; no second tracker.
   DB_ptr get_tracking_database(int cam_id);
+  // Bounded observation history, independent of filter measurement consumption.
+  DB_ptr get_observation_history(int cam_id);
 
   /// Chi information
   map<int, shared_ptr<UpdaterStatistics>> Chi;
