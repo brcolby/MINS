@@ -15,6 +15,12 @@ covariance-aware measurement rejection. No robot-specific calibration is stored
 in this fork. Observation hooks are no-ops by default; an embedding application
 may define `GESTALT_DIAGNOSTIC_HOOKS` and provide the declared callbacks.
 
+The optimized branch also resumes wheel updates at the first clone bracketed by
+fresh measurements after an invalid interval. It never integrates across a gap;
+short valid segments no longer wait for the pre-gap clone to age out. The
+`wheel_resumes_after_invalid_interval` regression exercises the actual updater,
+including a nonzero sensor time offset and prevention of repeated information.
+
 Standalone native regressions (Eigen 3 and OpenCV 4 required):
 
 ```sh
