@@ -42,6 +42,8 @@ void UpdaterWheel::reset_measurements() {
 }
 
 void UpdaterWheel::try_update() {
+  if (data_stack.size() < 2 || state->clones.empty())
+    return;
   // If we just want to update the oldest to newest
   if (state->op->wheel->reuse_of_information) {
     // return if we did not reach the max clone size yet
@@ -54,6 +56,18 @@ void UpdaterWheel::try_update() {
       return;
     update(state->oldest_clone_time(), t_up);
     return;
+  }
+
+  // A reset clears ambiguous/coasting intervals. The first new wheel sample
+  // usually follows the previous clone, so that clone cannot be integrated.
+  // Resume at the first clone covered by this contiguous segment instead of
+  // retrying the uncovered prefix until it ages out of the entire window.
+  const double first_covered_time = data_stack.front().time + state->wheel_dt->value()(0);
+  if (last_updated_clone_time < first_covered_time) {
+    const auto first = state->clones.lower_bound(first_covered_time);
+    if (first == state->clones.end())
+      return;
+    last_updated_clone_time = first->first;
   }
 
   // check last updated clone time still exist in the state
