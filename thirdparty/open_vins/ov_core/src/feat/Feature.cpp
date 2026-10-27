@@ -53,6 +53,7 @@ void Feature::clean_old_measurements(const std::vector<double> &valid_times) {
 }
 
 void Feature::clean_invalid_measurements(const std::vector<double> &invalid_times) {
+  if (invalid_times.empty()) return;
 
   // Loop through each of the cameras we have
   for (auto const &pair : timestamps) {
@@ -82,30 +83,26 @@ void Feature::clean_invalid_measurements(const std::vector<double> &invalid_time
 }
 
 void Feature::clean_older_measurements(double timestamp) {
-
-  // Loop through each of the cameras we have
-  for (auto const &pair : timestamps) {
-
-    // Assert that we have all the parts of a measurement
-    assert(timestamps[pair.first].size() == uvs[pair.first].size());
-    assert(timestamps[pair.first].size() == uvs_norm[pair.first].size());
-
-    // Our iterators
-    auto it1 = timestamps[pair.first].begin();
-    auto it2 = uvs[pair.first].begin();
-    auto it3 = uvs_norm[pair.first].begin();
-
-    // Loop through measurement times, remove ones that are older then the specified one
-    while (it1 != timestamps[pair.first].end()) {
-      if (*it1 <= timestamp) {
-        it1 = timestamps[pair.first].erase(it1);
-        it2 = uvs[pair.first].erase(it2);
-        it3 = uvs_norm[pair.first].erase(it3);
-      } else {
-        ++it1;
-        ++it2;
-        ++it3;
+  // Compact all three arrays together in one stable pass. Repeated vector::erase
+  // shifts the remaining history for every retired observation (quadratic work).
+  // Do not assume ordering: merged/retried observations can be out of order.
+  for (auto &pair : timestamps) {
+    auto &times = pair.second;
+    auto &pixels = uvs.at(pair.first);
+    auto &normalized = uvs_norm.at(pair.first);
+    assert(times.size() == pixels.size() && times.size() == normalized.size());
+    size_t kept = 0;
+    for (size_t i = 0; i < times.size(); ++i) {
+      if (times[i] <= timestamp) continue;
+      if (kept != i) {
+        times[kept] = times[i];
+        pixels[kept] = pixels[i];
+        normalized[kept] = normalized[i];
       }
+      ++kept;
     }
+    times.resize(kept);
+    pixels.resize(kept);
+    normalized.resize(kept);
   }
 }

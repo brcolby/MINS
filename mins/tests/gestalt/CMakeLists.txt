@@ -53,6 +53,7 @@ if(MINS_SOURCE)
   foreach(MODE IN ITEMS gate update propagation)
     add_test(NAME innovation_validity_${MODE} COMMAND innovation_check ${MODE})
   endforeach()
+  option(MINS_PERFORMANCE_CHECKS "Check optimized feature history cleanup" ON)
   if(MINS_PERFORMANCE_CHECKS)
     add_executable(feature_history_check feature_history.cc)
     target_include_directories(feature_history_check PRIVATE

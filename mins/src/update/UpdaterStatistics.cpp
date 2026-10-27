@@ -105,11 +105,28 @@ bool UpdaterStatistics::get_chi2(double &chi, double &thr, const MatrixXd &P, co
   }
 
   // test chi
-  MatrixXd S = (H * P * H.transpose() + R).selfadjointView<Upper>();
+  MatrixXd S;
+  VectorXd projected = res;
+  double discarded_chi2 = 0;
+  // Camera residuals have already been whitened. Compress their tall system
+  // before forming/factoring the innovation. Preserve the orthogonal residual
+  // energy AND the original measurement count for exactly the same gate.
+  // Other sensors/correlated noise retain the general covariance path.
+  if (H.rows() > H.cols() && H.cols() > 0 && R.isIdentity(0.0)) {
+    Eigen::HouseholderQR<MatrixXd> qr(H);
+    VectorXd rotated = qr.householderQ().adjoint() * res;
+    MatrixXd reduced = qr.matrixQR().topRows(H.cols()).template triangularView<Upper>();
+    S = (reduced * P * reduced.transpose()).selfadjointView<Upper>();
+    S.diagonal().array() += 1.0;
+    projected = rotated.head(H.cols());
+    discarded_chi2 = rotated.tail(H.rows() - H.cols()).squaredNorm();
+  } else {
+    S = (H * P * H.transpose() + R).selfadjointView<Upper>();
+  }
   if (!S.allFinite()) return false;
   Eigen::LLT<MatrixXd> innovation(S);
   if (innovation.info() != Eigen::Success) return false;
-  chi = res.dot(innovation.solve(res));
+  chi = projected.dot(innovation.solve(projected)) + discarded_chi2;
   if (res.rows() < max_chi_size) {
     thr = chi2_mult * chi_squared_table[res.rows()];
   } else {

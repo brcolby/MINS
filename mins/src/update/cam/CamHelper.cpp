@@ -67,7 +67,7 @@ MatrixXd CamHelper::get_feature_jacobian_representation(CamFeature &feature) {
   exit(EXIT_FAILURE);
 }
 
-CamLinSys CamHelper::get_feature_jacobian_full(shared_ptr<State> state, CamFeature &cam_feat, DB_ptr db, ID_T_POSE imu_poses) {
+CamLinSys CamHelper::get_feature_jacobian_full(shared_ptr<State> state, CamFeature &cam_feat, DB_ptr db, const ID_T_POSE &imu_poses) {
 
   //=========================================================================
   // Linear System
@@ -200,44 +200,44 @@ CamLinSys CamHelper::get_feature_jacobian_full(shared_ptr<State> state, CamFeatu
       p_FinC = R_ItoC * p_FinI + p_IinC;
 
       // Normalized coordinates in respect to projection function
-      MatrixXd dzn_dp_FinC = MatrixXd::Zero(2, 3);
+      Matrix<double, 2, 3> dzn_dp_FinC;
       dzn_dp_FinC << 1 / p_FinC(2), 0, -p_FinC(0) / (p_FinC(2) * p_FinC(2)), 0, 1 / p_FinC(2), -p_FinC(1) / (p_FinC(2) * p_FinC(2));
 
       // Derivative of p_FinC in respect to p_FinI
-      MatrixXd dp_FinC_dp_FinG = R_ItoC * R_GtoI;
+      Matrix3d dp_FinC_dp_FinG = R_ItoC * R_GtoI;
 
       // Derivative of p_FinC in respect to 'interpolated' IMU pose
-      MatrixXd dp_FinC_dI = MatrixXd::Zero(3, 6);
+      Matrix<double, 3, 6> dp_FinC_dI;
       dp_FinC_dI.block(0, 0, 3, 3) = R_ItoC * skew_x(p_FinI);
       dp_FinC_dI.block(0, 3, 3, 3) = -dp_FinC_dp_FinG;
 
       // Precompute some matrices
-      MatrixXd dz_dp_FinC = dz_dzn * dzn_dp_FinC;
+      Matrix<double, 2, 3> dz_dp_FinC = dz_dzn * dzn_dp_FinC;
 
       // CHAINRULE: get the total Jacobian of in respect to feature and interpolated pose
-      Eigen::MatrixXd HI = dz_dp_FinC * dp_FinC_dI;
+      Matrix<double, 2, 6> HI = dz_dp_FinC * dp_FinC_dI;
 
       //=========================================================================
       // Find the LLT of R inverse so that we can efficiently whiten the noise
       //=========================================================================
       // default covariance
-      Eigen::MatrixXd R = pow(state->op->cam->sigma_pix, 2) * Matrix2d::Identity();
+      Matrix2d R = pow(state->op->cam->sigma_pix, 2) * Matrix2d::Identity();
       // append interpolated covariance
       if (!state->have_clone(tm + dt)) {
         if (state->op->use_pol_cov) {
           R.noalias() += HI * intr_err_cov * HI.transpose();
         } else if (state->op->use_imu_cov) {
-          MatrixXd H_cpi = MatrixXd::Zero(6, 6); // pose to gamma and alpha
+          Matrix<double, 6, 6> H_cpi = Matrix<double, 6, 6>::Zero(); // pose to gamma and alpha
           H_cpi.block(0, 0, 3, 3) = Matrix3d::Identity();
           H_cpi.block(3, 3, 3, 3) = state->clones.at(state->cpis.at(tm + dt).clone_t)->Rot_fej().transpose();
 
-          MatrixXd H_ = HI * H_cpi;
+          Matrix<double, 2, 6> H_ = HI * H_cpi;
           R.noalias() += H_ * state->cpis.at(tm + dt).Q * H_.transpose() * state->op->intr_err.mlt;
         }
       }
 
       // Find the LLT of R inverse
-      MatrixXd R_llt_inv = gestalt_mins::camera_noise_whitener(R);
+      Matrix2d R_llt_inv = gestalt_mins::camera_noise_whitener(R);
 
       // Whiten residue with the measurement noise
       linsys.res.block(2 * c, 0, 2, 1) = R_llt_inv * linsys.res.block(2 * c, 0, 2, 1);
@@ -259,7 +259,7 @@ CamLinSys CamHelper::get_feature_jacobian_full(shared_ptr<State> state, CamFeatu
 
       // Derivative of p_FinCi in respect to camera calibration (R_ItoC, p_IinC)
       if (state->op->cam->do_calib_ext) {
-        MatrixXd dp_FinC_dT_ItoC = MatrixXd::Zero(3, 6);
+        Matrix<double, 3, 6> dp_FinC_dT_ItoC;
         dp_FinC_dT_ItoC.block(0, 0, 3, 3) = skew_x(p_FinC - p_IinC);
         dp_FinC_dT_ItoC.block(0, 3, 3, 3) = Matrix<double, 3, 3>::Identity();
         // Chainrule it and add it to the big jacobian
@@ -364,7 +364,7 @@ void CamHelper::get_imu_poses(shared_ptr<State> state, shared_ptr<ov_core::Featu
     // now loop through each measurement and compute the IMU pose
     for (auto mtime : meas.second) {
       // Check if we already have this pose
-      if (imu_poses.at(cam_id).find(mtime + dt) == imu_poses.at(cam_id).end()) {
+      if (imu_poses.at(cam_id).find(mtime) == imu_poses.at(cam_id).end()) {
         // compute imu pose
         Matrix3d R_GtoI;
         Vector3d p_IinG;
@@ -395,7 +395,7 @@ void CamHelper::get_cam_poses(State_ptr state, ID_T_POSE &imu_poses, ID_T_POSE &
       cam_poses.insert({cam_id, unordered_map<double, ov_core::FeatureInitializer::ClonePose>()});
 
     // Append camera pose
-    for (auto t_pose : id_t_pose.second) {
+    for (const auto &t_pose : id_t_pose.second) {
       if (cam_poses.at(cam_id).find(t_pose.first) == cam_poses.at(cam_id).end()) {
         Matrix3d R_GtoC = R_ItoC * t_pose.second.Rot();
         Vector3d p_CinG = t_pose.second.pos() - R_GtoC.transpose() * p_IinC;
@@ -405,7 +405,7 @@ void CamHelper::get_cam_poses(State_ptr state, ID_T_POSE &imu_poses, ID_T_POSE &
   }
 }
 
-void CamHelper::feature_triangulation(INIT_ptr init, V_Feature &v_feats, DB_ptr db, ID_T_POSE cam_pose) {
+void CamHelper::feature_triangulation(INIT_ptr init, V_Feature &v_feats, DB_ptr db, const ID_T_POSE &cam_pose) {
   // Loop and try triangulation
   for (auto feat = v_feats.begin(); feat != v_feats.end();) {
     if (!feature_triangulation(init, *feat, cam_pose)) {
@@ -417,7 +417,7 @@ void CamHelper::feature_triangulation(INIT_ptr init, V_Feature &v_feats, DB_ptr 
   }
 }
 
-bool CamHelper::feature_triangulation(INIT_ptr init, shared_ptr<ov_core::Feature> &feat, ID_T_POSE cam_poses) {
+bool CamHelper::feature_triangulation(INIT_ptr init, shared_ptr<ov_core::Feature> &feat, const ID_T_POSE &cam_poses) {
   // return false if not enough measurement
   if (n_meas(feat) < 2)
     return false;
@@ -469,20 +469,20 @@ void CamHelper::print(ID_T_POSE poses) {
   }
 }
 void CamHelper::copy_to_db(DB_ptr db, shared_ptr<Feature> &feature) {
-  for (const auto &cam_id : feature->timestamps) {
-    for (const auto &mtime : cam_id.second) {
-      copy_to_db(db, feature, cam_id.first, mtime);
+  for (const auto &cam : feature->timestamps) {
+    const auto &pixels = feature->uvs.at(cam.first);
+    const auto &normalized = feature->uvs_norm.at(cam.first);
+    for (size_t i = 0; i < cam.second.size(); ++i) {
+      const auto &uv = pixels.at(i);
+      const auto &uv_n = normalized.at(i);
+      db->update_feature(feature->featid, cam.second[i], cam.first,
+                         uv(0), uv(1), uv_n(0), uv_n(1));
     }
   }
 }
 void CamHelper::copy_to_db(DB_ptr db, vector<shared_ptr<ov_core::Feature>> &vec_feature) {
-  for (auto &feature : vec_feature) {
-    for (const auto &cam_id : feature->timestamps) {
-      for (const auto &mtime : cam_id.second) {
-        copy_to_db(db, feature, cam_id.first, mtime);
-      }
-    }
-  }
+  for (auto &feature : vec_feature)
+    copy_to_db(db, feature);
 }
 void CamHelper::copy_to_db(DB_ptr db, shared_ptr<Feature> &feature, unsigned long cam_id, double time) {
   // fine the uv measurments correspond to the measurement time
@@ -543,7 +543,7 @@ int CamHelper::n_meas(std::shared_ptr<ov_core::Feature> feat) {
   return n_meas;
 }
 
-int CamHelper::n_meas(vector<std::shared_ptr<ov_core::Feature>> vec_feat) {
+int CamHelper::n_meas(const vector<std::shared_ptr<ov_core::Feature>> &vec_feat) {
   int num_meas = 0;
   for (const auto &feat : vec_feat)
     num_meas += n_meas(feat);
@@ -558,10 +558,10 @@ int CamHelper::n_meas(shared_ptr<ov_core::FeatureDatabase> db) {
 }
 
 int CamHelper::n_feat(std::shared_ptr<ov_core::Feature> feat) { return 1; }
-int CamHelper::n_feat(vector<std::shared_ptr<ov_core::Feature>> vec_feat) { return vec_feat.size(); }
+int CamHelper::n_feat(const vector<std::shared_ptr<ov_core::Feature>> &vec_feat) { return vec_feat.size(); }
 int CamHelper::n_feat(shared_ptr<ov_core::FeatureDatabase> db) { return db->get_internal_data().size(); }
 
-void CamHelper::get_features(shared_ptr<State> state, V_Feature &msckf, V_Feature &slam, V_Feature &init, DB_ptr db_feats, deque<double> t_hist) {
+void CamHelper::get_features(shared_ptr<State> state, V_Feature &msckf, V_Feature &slam, V_Feature &init, DB_ptr db_feats, const deque<double> &t_hist) {
   // return if we have just one image so far
   if (t_hist.size() < 2)
     return;
@@ -665,9 +665,19 @@ void CamHelper::cleanup_features(shared_ptr<State> state, V_Feature &feat, DB_pt
   feats_database->append_new_measurements(db_return);
 
   // Cleanup any features older than the marginalization time
-  if (state->clone_window() > state->op->window_size) {
-    feats_database->cleanup_measurements(state->oldest_clone_time());
-    track_db->cleanup_measurements(state->oldest_clone_time());
+  // IMU propagation already marginalizes the clone window. Testing whether it
+  // is still overfull here often prevents ANY cleanup of the archival database.
+  // Retain every observation that remove_unusable_measurements can still use,
+  // including extrapolation and the largest camera-to-IMU time offset.
+  double cutoff = state->oldest_clone_time() - state->op->dt_exp;
+  for (const auto &offset : state->cam_dt)
+    cutoff = std::min(cutoff, state->oldest_clone_time() - state->op->dt_exp - offset.second->value()(0));
+  if (std::isfinite(cutoff)) {
+    // cleanup_measurements removes <=, whereas usable observations include the
+    // lower boundary. nextafter preserves that boundary exactly.
+    cutoff = std::nextafter(cutoff, -INFINITY);
+    feats_database->cleanup_measurements(cutoff);
+    track_db->cleanup_measurements(cutoff);
   }
 }
 

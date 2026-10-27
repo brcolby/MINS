@@ -28,7 +28,7 @@
 using namespace ov_core;
 
 bool FeatureInitializer::single_triangulation(std::shared_ptr<Feature> feat,
-                                              std::unordered_map<size_t, std::unordered_map<double, ClonePose>> &clonesCAM) {
+                                              const std::unordered_map<size_t, std::unordered_map<double, ClonePose>> &clonesCAM) {
 
   // Total number of measurements
   // Also set the first measurement to be the anchor frame
@@ -112,7 +112,7 @@ bool FeatureInitializer::single_triangulation(std::shared_ptr<Feature> feat,
 }
 
 bool FeatureInitializer::single_triangulation_1d(std::shared_ptr<Feature> feat,
-                                                 std::unordered_map<size_t, std::unordered_map<double, ClonePose>> &clonesCAM) {
+                                                 const std::unordered_map<size_t, std::unordered_map<double, ClonePose>> &clonesCAM) {
 
   // Total number of measurements
   // Also set the first measurement to be the anchor frame
@@ -195,7 +195,7 @@ bool FeatureInitializer::single_triangulation_1d(std::shared_ptr<Feature> feat,
 }
 
 bool FeatureInitializer::single_gaussnewton(std::shared_ptr<Feature> feat,
-                                            std::unordered_map<size_t, std::unordered_map<double, ClonePose>> &clonesCAM) {
+                                            const std::unordered_map<size_t, std::unordered_map<double, ClonePose>> &clonesCAM) {
 
   // Get into inverse depth
   double rho = 1 / feat->p_FinA(2);
@@ -374,7 +374,7 @@ bool FeatureInitializer::single_gaussnewton(std::shared_ptr<Feature> feat,
   return true;
 }
 
-double FeatureInitializer::compute_error(std::unordered_map<size_t, std::unordered_map<double, ClonePose>> &clonesCAM,
+double FeatureInitializer::compute_error(const std::unordered_map<size_t, std::unordered_map<double, ClonePose>> &clonesCAM,
                                          std::shared_ptr<Feature> feat, double alpha, double beta, double rho) {
 
   // Total error

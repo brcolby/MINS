@@ -9,6 +9,7 @@
  */
 
 #include "UpdaterCamera.h"
+#include <cstdlib>
 
 
 #include "CamHelper.h"
@@ -207,6 +208,10 @@ void UpdaterCamera::try_update(int cam_id) {
   CamHelper::cleanup_features(state, msckf, db_unused, msckf_used, trackFEATS.at(cam_id), trackDATABASE.at(cam_id));
   tc->dingdong("[Time-Cam] DB clan up");
   tc->counter++;
+  if (std::getenv("GESTALT_MINS_TIMING") && tc->counter % 60 == 0)
+    for (const auto &stage : tc->names)
+      fprintf(stderr, "MINS_TIMING %d %.9f %.9f %s\n", tc->counter,
+              stage.second.total_t, stage.second.max_t, stage.first.c_str());
 
   if (state->op->cam->time_analysis)
     tc->print_all();
@@ -214,10 +219,8 @@ void UpdaterCamera::try_update(int cam_id) {
 
 vector<Eigen::Vector3d> UpdaterCamera::get_used_msckf() {
   // copy used msckf
-  vector<Vector3d> msckf_used_cp = msckf_used;
-
-  // clear history
-  msckf_used.clear();
+  vector<Vector3d> msckf_used_cp;
+  msckf_used_cp.swap(msckf_used);
 
   // return
   return msckf_used_cp;

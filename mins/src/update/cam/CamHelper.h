@@ -57,7 +57,7 @@ public:
   static MatrixXd get_feature_jacobian_representation(CamFeature &feature);
 
   /// Return linear system of the feature
-  static CamLinSys get_feature_jacobian_full(State_ptr state, CamFeature &cam_feat, DB_ptr db, ID_T_POSE imu_poses);
+  static CamLinSys get_feature_jacobian_full(State_ptr state, CamFeature &cam_feat, DB_ptr db, const ID_T_POSE &imu_poses);
 
   /// print info of given object
   static void print(DB_ptr db);
@@ -72,12 +72,12 @@ public:
 
   /// return number of measurements in the object
   static int n_meas(std::shared_ptr<ov_core::Feature> feat);
-  static int n_meas(vector<std::shared_ptr<ov_core::Feature>> vec_feat);
+  static int n_meas(const vector<std::shared_ptr<ov_core::Feature>> &vec_feat);
   static int n_meas(shared_ptr<ov_core::FeatureDatabase> db);
 
   /// return number of features in the object
   static int n_feat(std::shared_ptr<ov_core::Feature> feat);
-  static int n_feat(vector<std::shared_ptr<ov_core::Feature>> vec_feat);
+  static int n_feat(const vector<std::shared_ptr<ov_core::Feature>> &vec_feat);
   static int n_feat(shared_ptr<ov_core::FeatureDatabase> db);
 
   /// return features older than the given timestamp
@@ -92,8 +92,8 @@ public:
   static void get_cam_poses(State_ptr state, ID_T_POSE &imu_poses, ID_T_POSE &cam_poses);
 
   /// Perform triangulation
-  static void feature_triangulation(INIT_ptr init, V_Feature &v_feats, DB_ptr db, ID_T_POSE cam_pose);
-  static bool feature_triangulation(INIT_ptr init, shared_ptr<ov_core::Feature> &feat, ID_T_POSE cam_poses);
+  static void feature_triangulation(INIT_ptr init, V_Feature &v_feats, DB_ptr db, const ID_T_POSE &cam_pose);
+  static bool feature_triangulation(INIT_ptr init, shared_ptr<ov_core::Feature> &feat, const ID_T_POSE &cam_poses);
 
   /// Convert feature format
   static CamFeature create_feature(shared_ptr<ov_core::Feature> feat, ov_type::LandmarkRepresentation::Representation rep);
@@ -104,7 +104,7 @@ public:
   static bool feat_sort(const std::shared_ptr<ov_core::Feature> &a, const std::shared_ptr<ov_core::Feature> &b);
 
   /// Return features can be used
-  static void get_features(State_ptr state, V_Feature &msckf, V_Feature &slam, V_Feature &init, DB_ptr db_feats, deque<double> t_hist);
+  static void get_features(State_ptr state, V_Feature &msckf, V_Feature &slam, V_Feature &init, DB_ptr db_feats, const deque<double> &t_hist);
 
   /// Put all unused features back to db and check used ones
   static void cleanup_features(State_ptr state, V_Feature &feat, DB_ptr db, vector<Vector3d> &used, Track_ptr track_feat, DB_ptr track_db);

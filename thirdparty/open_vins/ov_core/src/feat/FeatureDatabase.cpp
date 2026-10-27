@@ -20,6 +20,8 @@
  */
 
 #include "FeatureDatabase.h"
+#include <algorithm>
+#include <cmath>
 
 #include "Feature.h"
 #include "utils/print.h"
@@ -294,10 +296,18 @@ void FeatureDatabase::append_new_measurements(const std::shared_ptr<FeatureDatab
           temp->uvs[cam_id] = feat.second->uvs.at(cam_id);
           temp->uvs_norm[cam_id] = feat.second->uvs_norm.at(cam_id);
         } else {
+          // Membership of the original destination, preserving source
+          // insertion order and the upstream duplicate semantics.
+          // A contiguous sorted copy avoids one hash-node allocation
+          // per old observation on every image. NaN never matches the
+          // upstream find predicate and must not enter the sort.
           auto temp_times = temp->timestamps.at(cam_id);
+          temp_times.erase(std::remove_if(temp_times.begin(), temp_times.end(),
+              [](double value) { return std::isnan(value); }), temp_times.end());
+          std::sort(temp_times.begin(), temp_times.end());
           for (size_t i = 0; i < feat.second->timestamps.at(cam_id).size(); i++) {
             double time_to_find = feat.second->timestamps.at(cam_id).at(i);
-            if (std::find(temp_times.begin(), temp_times.end(), time_to_find) == temp_times.end()) {
+            if (std::isnan(time_to_find) || !std::binary_search(temp_times.begin(), temp_times.end(), time_to_find)) {
               temp->timestamps.at(cam_id).push_back(feat.second->timestamps.at(cam_id).at(i));
               temp->uvs.at(cam_id).push_back(feat.second->uvs.at(cam_id).at(i));
               temp->uvs_norm.at(cam_id).push_back(feat.second->uvs_norm.at(cam_id).at(i));

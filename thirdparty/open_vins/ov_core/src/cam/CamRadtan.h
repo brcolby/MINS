@@ -104,10 +104,10 @@ public:
     cv::Vec<double, 5> camD(camera_d_OPENCV(0), camera_d_OPENCV(1), camera_d_OPENCV(2), camera_d_OPENCV(3), fixed_k3);
 
     // Convert to opencv format
-    cv::Mat mat(1, 2, CV_32F);
-    mat.at<float>(0, 0) = uv_dist(0);
-    mat.at<float>(0, 1) = uv_dist(1);
-    mat = mat.reshape(2); // Nx1, 2-channel
+    // OpenCV still performs the identical calibrated inversion.
+    // A stack-backed 2-channel point avoids a heap allocation per feature.
+    cv::Vec2f point(uv_dist(0), uv_dist(1));
+    cv::Mat mat(1, 1, CV_32FC2, point.val);
 
     // Undistort it!
     cv::undistortPoints(mat, mat, camK, camD, cv::noArray(), cv::noArray(),
@@ -129,7 +129,7 @@ public:
   Eigen::Vector2f distort_f(const Eigen::Vector2f &uv_norm) override {
 
     // Get our camera parameters
-    Eigen::MatrixXd cam_d = camera_values;
+    const auto &cam_d = camera_values;
 
     // Calculate distorted coordinates for radial
     double r = std::sqrt(uv_norm(0) * uv_norm(0) + uv_norm(1) * uv_norm(1));
@@ -156,7 +156,7 @@ public:
   void compute_distort_jacobian(const Eigen::Vector2d &uv_norm, Eigen::MatrixXd &H_dz_dzn, Eigen::MatrixXd &H_dz_dzeta) override {
 
     // Get our camera parameters
-    Eigen::MatrixXd cam_d = camera_values;
+    const auto &cam_d = camera_values;
 
     // Calculate distorted coordinates for radial
     double r = std::sqrt(uv_norm(0) * uv_norm(0) + uv_norm(1) * uv_norm(1));

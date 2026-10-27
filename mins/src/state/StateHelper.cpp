@@ -135,15 +135,15 @@ bool StateHelper::EKFUpdate(shared_ptr<State> state, const VEC_TYPE &H_order, co
 
   //==========================================================
   //==========================================================
-  // For each active variable find its M = P*H^T
-  for (const auto &var : state->variables) {
-    // Sum up effect of each subjacobian = K_i= \sum_m (P_im Hm^T)
-    for (size_t i = 0; i < H_order.size(); i++) {
-      const shared_ptr<Type> &meas_var = H_order.at(i);
-      M_a.block(var->id(), 0, var->size(), res.rows()).noalias() +=
-          state->cov.block(var->id(), meas_var->id(), var->size(), meas_var->size()) * H.block(0, H_id[i], H.rows(), meas_var->size()).transpose();
-    }
+  // Gather the measured columns once, then use a contiguous matrix product.
+  // H_order may contain noncontiguous subvariables in any order.
+  MatrixXd P_ordered(state->cov.rows(), H.cols());
+  for (size_t i = 0; i < H_order.size(); ++i) {
+    const auto &variable = H_order[i];
+    P_ordered.middleCols(H_id[i], variable->size()) =
+        state->cov.middleCols(variable->id(), variable->size());
   }
+  M_a.noalias() = P_ordered * H.transpose();
 
   //==========================================================
   //==========================================================
@@ -156,18 +156,17 @@ bool StateHelper::EKFUpdate(shared_ptr<State> state, const VEC_TYPE &H_order, co
   S.triangularView<Upper>() += R;
 
   // Compute Kalman gain
-  MatrixXd Sinv = MatrixXd::Identity(R.rows(), R.rows());
   Eigen::LLT<MatrixXd> innovation(S.selfadjointView<Upper>());
   if (innovation.info() != Eigen::Success) {
     gestalt_mins_covariance_rejected(type.c_str());
     return false;
   }
-  innovation.solveInPlace(Sinv);
-  if (!Sinv.allFinite()) {
+  // Solve S * K^T = M^T instead of forming S^-1 and multiplying it.
+  MatrixXd K = innovation.solve(M_a.transpose()).transpose();
+  if (!K.allFinite()) {
     gestalt_mins_covariance_rejected(type.c_str());
     return false;
   }
-  MatrixXd K = M_a * Sinv.selfadjointView<Upper>();
 
   // dx, dx_Cov
   VectorXd dx = K * res;
@@ -441,13 +440,35 @@ bool StateHelper::initialize(shared_ptr<State> state, shared_ptr<Type> new_varia
   //==========================================================
   //==========================================================
 
+  // Orthogonal compression of the isotropic-noise update is exact. Retain
+  // the discarded residual energy in the innovation test: those rows contain
+  // no state information, but still contribute to chi-square with the original
+  // degrees of freedom. Dropping that energy would silently weaken gating.
+  double discarded_chi2 = 0;
+  if (Hup.rows() > Hup.cols()) {
+    const Eigen::Index columns = Hup.cols();
+    if (!(Rup(0, 0) > 0)) return false;
+    Eigen::HouseholderQR<MatrixXd> qr(Hup);
+    VectorXd projected = qr.householderQ().adjoint() * resup;
+    discarded_chi2 = projected.tail(Hup.rows() - columns).squaredNorm() / Rup(0, 0);
+    Hup = qr.matrixQR().topRows(columns).template triangularView<Upper>();
+    resup = projected.head(columns);
+    Rup = Rup.topLeftCorner(columns, columns).eval();
+  }
+
   // Do mahalanobis distance testing
-  if (health_check) {
+  if (health_check && resup.size() > 0) {
     MatrixXd P_up = get_marginal_covariance(state, H_order);
     assert(Rup.rows() == Hup.rows());
     assert(Hup.cols() == P_up.cols());
     MatrixXd S = Hup * P_up * Hup.transpose() + Rup;
-    double chi2 = resup.transpose() * S.inverse().selfadjointView<Upper>() * resup;
+    // A full inverse costs cubic work for hundreds of image residuals.
+    // Only S^-1 * residual is needed for the identical Mahalanobis statistic.
+    if (!S.allFinite() || !resup.allFinite()) return false;
+    Eigen::LLT<MatrixXd> innovation(S.selfadjointView<Upper>());
+    if (innovation.info() != Eigen::Success) return false;
+    double chi2 = resup.dot(innovation.solve(resup)) + discarded_chi2;
+    if (!std::isfinite(chi2) || chi2 < 0) return false;
 
     // Get what our threshold should be
     double chi2_check = chi_square_quantile(0.95, res.rows());
@@ -647,12 +668,13 @@ void StateHelper::measurement_compress_inplace(MatrixXd &H_x, VectorXd &res) {
   if (H_x.rows() <= H_x.cols())
     return;
 
-  // Do measurement compression through givens rotations
-  Givens_Rotation(H_x, res);
-
-  // Construct the smaller jacobian and residual after measurement compression
-  H_x.conservativeResize(H_x.cols(), H_x.cols());
-  res.conservativeResize(H_x.cols(), res.cols());
+  // Apply one orthogonal Householder factorization to the tall system.
+  // This preserves H^T H and H^T r, including rank-deficient systems, without
+  // the cache-unfriendly row-by-row rotations of a column-major matrix.
+  const Eigen::Index columns = H_x.cols();
+  Eigen::HouseholderQR<MatrixXd> qr(H_x);
+  res = (qr.householderQ().adjoint() * res).eval().head(columns).eval();
+  H_x = qr.matrixQR().topRows(columns).template triangularView<Upper>();
 }
 
 void StateHelper::nullspace_project_inplace(MatrixXd &H_f, MatrixXd &H_x, VectorXd &res) {

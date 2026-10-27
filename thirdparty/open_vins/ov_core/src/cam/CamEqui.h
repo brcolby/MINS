@@ -136,7 +136,7 @@ public:
   Eigen::Vector2f distort_f(const Eigen::Vector2f &uv_norm) override {
 
     // Get our camera parameters
-    Eigen::MatrixXd cam_d = camera_values;
+    const auto &cam_d = camera_values;
 
     // Calculate distorted coordinates for fisheye
     double r = std::sqrt(uv_norm(0) * uv_norm(0) + uv_norm(1) * uv_norm(1));
@@ -166,7 +166,7 @@ public:
   void compute_distort_jacobian(const Eigen::Vector2d &uv_norm, Eigen::MatrixXd &H_dz_dzn, Eigen::MatrixXd &H_dz_dzeta) override {
 
     // Get our camera parameters
-    Eigen::MatrixXd cam_d = camera_values;
+    const auto &cam_d = camera_values;
 
     // Calculate distorted coordinates for fisheye
     double r = std::sqrt(uv_norm(0) * uv_norm(0) + uv_norm(1) * uv_norm(1));
