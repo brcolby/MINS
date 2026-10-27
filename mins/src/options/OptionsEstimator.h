@@ -64,6 +64,9 @@ struct OptionsEstimator {
 
   /// Clone hz
   int clone_freq = 10;
+  // Keep the sliding covariance/interpolation history bounded during a camera
+  // outage, even when wheel fusion is disabled. Does not fabricate updates.
+  bool clone_during_camera_outage = false;
 
   /// Allowance of extrapolation (s)
   double dt_exp = 0.01;

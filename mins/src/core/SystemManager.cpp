@@ -365,7 +365,8 @@ bool SystemManager::get_next_clone_time(double &clone_time, double meas_t) {
   }
 
   // return false if we didn't find any measurements for clone
-  if (isinf(min_t_diff) && !have_meas && !state->op->wheel->enabled) {
+  if (isinf(min_t_diff) && !have_meas && !state->op->wheel->enabled &&
+      !state->op->clone_during_camera_outage) {
     PRINT0("cannot find measurement at or before this time.\n");
     clone_time = -1;
     return false;
