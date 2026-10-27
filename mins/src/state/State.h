@@ -11,6 +11,7 @@
 #define MINS_STATE_H
 #include <Eigen/Eigen>
 #include <memory>
+#include <set>
 #include <unordered_map>
 
 using namespace std;
@@ -191,6 +192,12 @@ public:
 
   /// Timestamp of clones that we will convert to keyframes.
   vector<double> keyframes_candidate;
+
+  /// Explicit reference clones retained by non-GNSS updaters. Their owner must
+  /// keep the set bounded and release entries when no longer needed. They stay
+  /// in clones, so frame changes transform their means and full covariance.
+  /// GNSS initialization may clear its own keyframes without releasing these.
+  std::set<double> retained_clones;
 
   /// Our current set of SLAM features (3d positions)
   unordered_map<size_t, shared_ptr<ov_type::Landmark>> cam_SLAM_features;

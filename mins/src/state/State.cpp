@@ -934,7 +934,8 @@ double State::oldest_clone_time() {
     return -INFINITY;
 
   for (const auto &clone : clones) {
-    if (find(keyframes.begin(), keyframes.end(), clone.first) == keyframes.end())
+    if (!retained_clones.count(clone.first) &&
+        find(keyframes.begin(), keyframes.end(), clone.first) == keyframes.end())
       return clone.first;
   }
   return -INFINITY;
