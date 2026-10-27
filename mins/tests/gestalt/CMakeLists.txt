@@ -16,6 +16,8 @@ list(FILTER MINS_SOURCES EXCLUDE REGEX "/io/")
 list(FILTER CORE_SOURCES EXCLUDE REGEX "/(test_[^/]*|dummy)\\.cpp$")
 add_library(mins STATIC ${MINS_SOURCES} ${CORE_SOURCES})
 target_compile_definitions(mins PUBLIC ROS_AVAILABLE=0 ENABLE_ARUCO_TAGS=0)
+# Regression programs assert the reported innovation and rejection diagnostics.
+target_compile_definitions(mins PRIVATE GESTALT_DIAGNOSTIC_HOOKS=1)
 target_include_directories(mins PUBLIC "${MINS_SOURCE}/mins/src"
   "${MINS_SOURCE}/thirdparty/open_vins/ov_core/src" ${OpenCV_INCLUDE_DIRS})
 target_include_directories(mins PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
