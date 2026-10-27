@@ -227,6 +227,11 @@ void CpiV1::feed_IMU(double t_0, double t_1, Eigen::Matrix<double, 3, 1> w_m_0, 
               : eye3 - (sin(mag_w * .5 * delta_t) / mag_w) * w_x + ((1.0 - cos(mag_w * .5 * delta_t)) / (pow(mag_w, 2.0))) * w_x_2;
   R_mid = R_mid * R_k2tau;
 
+  // With a signed dt, reverse-time noise needs the same sign so its
+  // integrated covariance remains positive; F and the means stay signed.
+  const Eigen::Matrix<double, 12, 12> integration_noise =
+      (delta_t < 0 ? -1.0 : 1.0) * Q_c;
+
   // Compute covariance (in this implementation, we use RK4)
   // k1-------------------------------------------------------------------------------------------------
 
@@ -246,7 +251,7 @@ void CpiV1::feed_IMU(double t_0, double t_1, Eigen::Matrix<double, 3, 1> w_m_0, 
   G_k1.block(9, 9, 3, 3) = eye3;
 
   // Get covariance derivative
-  Eigen::Matrix<double, 15, 15> P_dot_k1 = F_k1 * P_meas + P_meas * F_k1.transpose() + G_k1 * Q_c * G_k1.transpose();
+  Eigen::Matrix<double, 15, 15> P_dot_k1 = F_k1 * P_meas + P_meas * F_k1.transpose() + G_k1 * integration_noise * G_k1.transpose();
 
   // k2-------------------------------------------------------------------------------------------------
 
@@ -267,7 +272,7 @@ void CpiV1::feed_IMU(double t_0, double t_1, Eigen::Matrix<double, 3, 1> w_m_0, 
 
   // Get covariance derivative
   Eigen::Matrix<double, 15, 15> P_k2 = P_meas + P_dot_k1 * delta_t / 2.0;
-  Eigen::Matrix<double, 15, 15> P_dot_k2 = F_k2 * P_k2 + P_k2 * F_k2.transpose() + G_k2 * Q_c * G_k2.transpose();
+  Eigen::Matrix<double, 15, 15> P_dot_k2 = F_k2 * P_k2 + P_k2 * F_k2.transpose() + G_k2 * integration_noise * G_k2.transpose();
 
   // k3-------------------------------------------------------------------------------------------------
 
@@ -278,7 +283,7 @@ void CpiV1::feed_IMU(double t_0, double t_1, Eigen::Matrix<double, 3, 1> w_m_0, 
 
   // Get covariance derivative
   Eigen::Matrix<double, 15, 15> P_k3 = P_meas + P_dot_k2 * delta_t / 2.0;
-  Eigen::Matrix<double, 15, 15> P_dot_k3 = F_k3 * P_k3 + P_k3 * F_k3.transpose() + G_k3 * Q_c * G_k3.transpose();
+  Eigen::Matrix<double, 15, 15> P_dot_k3 = F_k3 * P_k3 + P_k3 * F_k3.transpose() + G_k3 * integration_noise * G_k3.transpose();
 
   // k4-------------------------------------------------------------------------------------------------
 
@@ -299,7 +304,7 @@ void CpiV1::feed_IMU(double t_0, double t_1, Eigen::Matrix<double, 3, 1> w_m_0, 
 
   // Get covariance derivative
   Eigen::Matrix<double, 15, 15> P_k4 = P_meas + P_dot_k3 * delta_t;
-  Eigen::Matrix<double, 15, 15> P_dot_k4 = F_k4 * P_k4 + P_k4 * F_k4.transpose() + G_k4 * Q_c * G_k4.transpose();
+  Eigen::Matrix<double, 15, 15> P_dot_k4 = F_k4 * P_k4 + P_k4 * F_k4.transpose() + G_k4 * integration_noise * G_k4.transpose();
 
   // done-------------------------------------------------------------------------------------------------
 

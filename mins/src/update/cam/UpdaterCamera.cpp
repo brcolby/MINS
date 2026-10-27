@@ -1,3 +1,4 @@
+#include "utils/gestalt_hooks.h"
 /*
  * MINS: Efficient and Robust Multisensor-aided Inertial Navigation System
  * Copyright (C) 2019-2026 Woosik Lee
@@ -8,6 +9,8 @@
  */
 
 #include "UpdaterCamera.h"
+
+
 #include "CamHelper.h"
 #include "CamTypes.h"
 #include "feat/Feature.h"
@@ -104,6 +107,10 @@ void UpdaterCamera::feed_measurement(const ov_core::CameraData &camdata) {
   // Perform our feature tracking!
   int cam_id = message.sensor_ids.at(0);
   trackFEATS.at(cam_id)->feed_new_camera(message);
+  int tracked = 0;
+  for (const auto &observation : trackFEATS.at(cam_id)->get_last_obs())
+    tracked += static_cast<int>(observation.second.size());
+  gestalt_mins_tracked_features(message.timestamp, tracked);
   trackDATABASE.at(cam_id)->append_new_measurements(trackFEATS.at(cam_id)->get_feature_database());
 
   // Marginalize lost-track SLAM features
@@ -160,6 +167,10 @@ void UpdaterCamera::marginalize_slam_features(const ov_core::CameraData &camdata
   // Let's marginalize out all old SLAM features here
   // These are ones that where not successfully tracked into the current frame
   StateHelper::marginalize_slam(state);
+}
+
+DB_ptr UpdaterCamera::get_tracking_database(int cam_id) {
+  return trackFEATS.at(cam_id)->get_feature_database();
 }
 
 void UpdaterCamera::try_update(int cam_id) {
@@ -268,12 +279,13 @@ void UpdaterCamera::msckf_update(V_Feature &vec_features, DB_ptr db_unused) {
     StateHelper::nullspace_project_inplace(L.Hf, L.Hx, L.res);
 
     // Get noise covariance R
-    L.R = MatrixXd::Zero(L.res.rows(), L.res.rows());
-    L.R.diagonal() += pow(state->op->cam->sigma_pix, 2) * Eigen::VectorXd::Ones(L.R.rows());
+    // CamHelper already whitens pixel and interpolation noise.
+    // Orthogonal nullspace projection preserves identity covariance.
+    L.R = MatrixXd::Identity(L.res.rows(), L.res.rows());
 
     // Check if we should delete or not
     int cam_id = (int)(*feat)->timestamps.begin()->first;
-    if (L.res.norm() < 3 && Chi.at(cam_id)->Chi2Check(state, L.Hx_order, L.Hx, L.res, L.R)) {
+    if (Chi.at(cam_id)->Chi2Check(state, L.Hx_order, L.Hx, L.res, L.R)) {
       size_t ct_hx = 0;
       for (const auto &var : L.Hx_order) {
         // Ensure that this variable is in our Jacobian

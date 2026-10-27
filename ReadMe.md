@@ -1,4 +1,28 @@
 # MINS
+
+## Gestalt fork
+
+This fork preserves upstream `a724a01a1e60c3e56f0b6621a22a2d2b3616fb27` at tag
+`gestalt-upstream-20261027`. Branch `gestalt-baseline` retains the correctness
+fixes without the optional performance changes; `master` carries the optimized
+variant. Consumers should pin a commit, rather than follow a moving branch.
+Existing upstream licenses and attribution apply to the modified source.
+
+The fixes preserve the measured fifth radtan coefficient and add numerical and
+capture-time regressions. MINS additionally corrects covariance whitening,
+reverse preintegration noise, IMU interval selection and interpolation, and
+covariance-aware measurement rejection. No robot-specific calibration is stored
+in this fork. Observation hooks are no-ops by default; an embedding application
+may define `GESTALT_DIAGNOSTIC_HOOKS` and provide the declared callbacks.
+
+Standalone native regressions (Eigen 3 and OpenCV 4 required):
+
+```sh
+cmake -S mins/tests/gestalt -B build/gestalt-checks -DCMAKE_BUILD_TYPE=Release
+cmake --build build/gestalt-checks --parallel 2
+ctest --test-dir build/gestalt-checks --output-on-failure
+```
+
 [![ROS1 Melodic (Ubuntu 18.04)](https://github.com/rpng/MINS/actions/workflows/build_ros1_melodic.yml/badge.svg)](https://github.com/rpng/MINS/actions/workflows/build_ros1_melodic.yml)
 [![ROS1 Noetic (Ubuntu 20.04)](https://github.com/rpng/MINS/actions/workflows/build_ros1_noetic.yml/badge.svg)](https://github.com/rpng/MINS/actions/workflows/build_ros1_noetic.yml)
 [![ROS2 Humble (Ubuntu 22.04)](https://github.com/rpng/MINS/actions/workflows/build_ros2.yml/badge.svg)](https://github.com/rpng/MINS/actions/workflows/build_ros2.yml)

@@ -1,3 +1,4 @@
+#include "utils/gestalt_hooks.h"
 /*
  * MINS: Efficient and Robust Multisensor-aided Inertial Navigation System
  * Copyright (C) 2019-2026 Woosik Lee
@@ -8,6 +9,8 @@
  */
 
 #include "CamHelper.h"
+
+#include "measurement_whitening.h"
 #include "CamTypes.h"
 #include "cam/CamBase.h"
 #include "feat/Feature.h"
@@ -234,8 +237,7 @@ CamLinSys CamHelper::get_feature_jacobian_full(shared_ptr<State> state, CamFeatu
       }
 
       // Find the LLT of R inverse
-      MatrixXd R_llt = R.llt().matrixL();
-      MatrixXd R_llt_inv = R_llt.llt().solve(MatrixXd::Identity(2, 2));
+      MatrixXd R_llt_inv = gestalt_mins::camera_noise_whitener(R);
 
       // Whiten residue with the measurement noise
       linsys.res.block(2 * c, 0, 2, 1) = R_llt_inv * linsys.res.block(2 * c, 0, 2, 1);
@@ -610,7 +612,9 @@ void CamHelper::get_features(shared_ptr<State> state, V_Feature &msckf, V_Featur
     // 1. Triangulation
     get_imu_poses(state, (*feat), db_unused, imu_poses);
     get_cam_poses(state, imu_poses, cam_poses);
-    if (!feature_triangulation(feat_init, *feat, cam_poses)) {
+    const bool triangulated = feature_triangulation(feat_init, *feat, cam_poses);
+    gestalt_mins_feature_stage("triangulation", triangulated);
+    if (!triangulated) {
       copy_to_db(db_unused, (*feat));
       feat = feats_pool.erase(feat);
       continue;

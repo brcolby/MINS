@@ -19,6 +19,39 @@
 #include "utils/opencv_yaml_parse.h"
 
 void mins::OptionsEstimator::load(const std::shared_ptr<ov_core::YamlParser> &parser) {
+  if (parser == nullptr) {
+    intr_err.mlt = 3;
+    intr_err.reading_ori_slope = {0.0504,0.03465,0.03303,0.0351,0.04842};
+    intr_err.reading_pos_slope = {0.05463,0.02493,0.0216,0.02079,0.02124};
+    intr_err.set_values(4);
+    intr_err.reading_ori_slope = {0.0306,0.01953,0.018,0.01791,0.02016};
+    intr_err.reading_pos_slope = {0.03501,0.01422,0.01197,0.01125,0.01098};
+    intr_err.set_values(5);
+    intr_err.reading_ori_slope = {0.02349,0.01359,0.01224,0.01179,0.01224};
+    intr_err.reading_pos_slope = {0.02538,0.00936,0.00792,0.00765,0.00765};
+    intr_err.set_values(6);
+    intr_err.reading_ori_slope = {0.018,0.00954,0.00837,0.00801,0.00801};
+    intr_err.reading_pos_slope = {0.01899,0.00648,0.00549,0.00531,0.00531};
+    intr_err.set_values(7);
+    intr_err.reading_ori_slope = {0.00464,0.0022,0.00188,0.00184,0.00184};
+    intr_err.reading_pos_slope = {0.00524,0.001,0.00088,0.00084,0.00084};
+    intr_err.set_values(9);
+    intr_err.reading_ori_slope = {0.00288,0.00126,0.00108,0.00102,0.00102};
+    intr_err.reading_pos_slope = {0.00312,0.00087,0.00072,0.00066,0.00066};
+    intr_err.set_values(10);
+    intr_err.reading_ori_slope = {0.00138,0.00066,0.00063,0.00069,0.00087};
+    intr_err.reading_pos_slope = {0.00144,0.00021,0.00018,0.00015,0.00015};
+    intr_err.set_values(15);
+    intr_err.reading_ori_slope = {0.00084,0.00012,6e-05,3e-05,3e-05};
+    intr_err.reading_pos_slope = {0.00084,9e-05,6e-05,3e-05,3e-05};
+    intr_err.set_values(20);
+    intr_err.reading_ori_slope = {0.00051,0.00012,9e-05,9e-05,9e-05};
+    intr_err.reading_pos_slope = {0.00054,6e-05,3e-05,3e-05,3e-05};
+    intr_err.set_values(25);
+    intr_err.reading_ori_slope = {0.00036,6e-05,3e-05,3e-05,3e-05};
+    intr_err.reading_pos_slope = {0.00036,3e-05,3e-05,3e-05,0.0};
+    intr_err.set_values(30);
+  }
   if (parser != nullptr) {
     std::string f = "config_estimator";
     parser->parse_external(f, "est", "gravity_mag", gravity(2));

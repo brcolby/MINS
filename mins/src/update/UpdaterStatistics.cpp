@@ -1,3 +1,4 @@
+#include "utils/gestalt_hooks.h"
 /*
  * MINS: Efficient and Robust Multisensor-aided Inertial Navigation System
  * Copyright (C) 2019-2026 Woosik Lee
@@ -8,6 +9,7 @@
  */
 
 #include "UpdaterStatistics.h"
+
 #include "state/State.h"
 #include "state/StateHelper.h"
 #include "utils/Jabdongsani.h"
@@ -36,8 +38,11 @@ bool UpdaterStatistics::Chi2Check(const MatrixXd &P, const MatrixXd &H, const Ve
 
   // Get Chi2 values
   double chi, thr;
-  if (!get_chi2(chi, thr, P, H, res, R))
+  if (!get_chi2(chi, thr, P, H, res, R)) {
+    gestalt_mins_gate(type.c_str(), -1, -1, -1);
     return false;
+  }
+  gestalt_mins_gate(type.c_str(), chi < thr ? 1 : 0, chi, thr);
 
   // Record statistics
   res_stat->add_stat(res);
@@ -81,6 +86,12 @@ void UpdaterStatistics::print() {
 }
 bool UpdaterStatistics::get_chi2(double &chi, double &thr, const MatrixXd &P, const MatrixXd &H, const VectorXd &res, const MatrixXd &R) {
 
+  // Numerical failure is distinct from a valid rejected innovation.
+  if (res.size() == 0 || P.rows() != P.cols() || H.cols() != P.rows() ||
+      H.rows() != res.rows() || R.rows() != res.rows() || R.cols() != res.rows() ||
+      !P.allFinite() || !H.allFinite() || !res.allFinite() || !R.allFinite())
+    return false;
+
   // check dimensions right
   if (H.rows() != R.rows()) {
     string sensor = type + (id < 0 ? "" : to_string(id));
@@ -95,13 +106,16 @@ bool UpdaterStatistics::get_chi2(double &chi, double &thr, const MatrixXd &P, co
 
   // test chi
   MatrixXd S = (H * P * H.transpose() + R).selfadjointView<Upper>();
-  chi = res.transpose() * S.inverse().selfadjointView<Upper>() * res;
+  if (!S.allFinite()) return false;
+  Eigen::LLT<MatrixXd> innovation(S);
+  if (innovation.info() != Eigen::Success) return false;
+  chi = res.dot(innovation.solve(res));
   if (res.rows() < max_chi_size) {
     thr = chi2_mult * chi_squared_table[res.rows()];
   } else {
     thr = chi2_mult * chi_square_quantile(0.95, res.rows());
   }
-  if (isnan(chi)) {
+  if (!std::isfinite(chi) || chi < 0 || !std::isfinite(thr) || thr <= 0) {
     string sensor = type + (id < 0 ? "" : to_string(id));
     PRINT2("[%s] Got NAN during check. Here are debug messages.\n", sensor.c_str());
 

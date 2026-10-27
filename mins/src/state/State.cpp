@@ -94,7 +94,7 @@ void State::set_camera_state(int &current_id) {
       cam_intrinsic_model.insert({i, make_shared<ov_core::CamEqui>(op->cam->wh.at(i)[0], op->cam->wh.at(i)[1])});
       cam_intrinsic_model.at(i)->set_value(op->cam->intrinsics.at(i));
     } else {
-      cam_intrinsic_model.insert({i, make_shared<ov_core::CamRadtan>(op->cam->wh.at(i)[0], op->cam->wh.at(i)[1])});
+      cam_intrinsic_model.insert({i, make_shared<ov_core::CamRadtan>(op->cam->wh.at(i)[0], op->cam->wh.at(i)[1], (op->cam->fixed_k3.count(i) ? op->cam->fixed_k3.at(i) : 0.0))});
       cam_intrinsic_model.at(i)->set_value(op->cam->intrinsics.at(i));
     }
 
@@ -985,7 +985,7 @@ bool State::closest_clone_time(double t_given, double &t) {
   bool found = false;
   for (pair<const double, shared_ptr<ov_type::PoseJPL>> &clone : clones) {
     if (abs(t_given - clone.first) < t_diff) {
-      t_diff = abs(t - clone.first);
+      t_diff = abs(t_given - clone.first);
       t = clone.first;
       found = true;
     }
@@ -1001,7 +1001,7 @@ bool State::closest_clone_time_not_imu(double t_given, double &t) {
   bool found = false;
   for (pair<const double, shared_ptr<ov_type::PoseJPL>> &clone : clones) {
     if (abs(t_given - clone.first) < t_diff && clone.second->id() != imu->id()) {
-      t_diff = abs(t - clone.first);
+      t_diff = abs(t_given - clone.first);
       t = clone.first;
       found = true;
     }
@@ -1305,6 +1305,7 @@ bool State::create_new_cpi_linear(double t_given) {
   double lambda = (t_given - t0) / (t1 - t0);
   cpi_new.R_I0toIk = exp_so3(lambda * log_so3(cpi1.R_I0toIk * cpi0.R_I0toIk.transpose())) * cpi0.R_I0toIk;
   cpi_new.alpha_I0toIk = (1 - lambda) * cpi0.alpha_I0toIk + lambda * cpi1.alpha_I0toIk;
+  cpi_new.w = (1 - lambda) * cpi0.w + lambda * cpi1.w;
   cpi_new.v = (1 - lambda) * cpi0.v + lambda * cpi1.v;
   cpi_new.Q = (1 - lambda) * cpi0.Q + lambda * cpi1.Q;
   cpi_new.bg = (1 - lambda) * cpi0.bg + lambda * cpi1.bg;
@@ -1340,11 +1341,10 @@ bool State::create_new_cpi_integrate(double t_given) {
   // Init a new CPI
   CpiV1 cpiv1(op->imu->sigma_w, op->imu->sigma_wb, op->imu->sigma_a, op->imu->sigma_ab, true);
   cpiv1.setLinearizationPoints(cpis.at(clone_t).bg, cpis.at(clone_t).ba);
-  Matrix3d R_GtoIk = clones.at(clone_t)->Rot();
+  const Matrix3d R_GtoI0 = clones.at(clone_t)->Rot();
 
   // Compute CPI recursively toward retested t
   for (size_t i = 0; i < imu_data.size() - 1; i++) {
-    R_GtoIk = cpiv1.R_k2tau * R_GtoIk; // integrate orientation
     cpiv1.feed_IMU(imu_data[i].timestamp, imu_data[i + 1].timestamp, imu_data[i].wm, imu_data[i].am, imu_data[i + 1].wm, imu_data[i + 1].am);
   }
 
@@ -1356,7 +1356,7 @@ bool State::create_new_cpi_integrate(double t_given) {
   cpi_new.R_I0toIk = cpiv1.R_k2tau;
   cpi_new.alpha_I0toIk = cpiv1.alpha_tau;
   cpi_new.w = imu_data.back().wm - cpis.at(clone_t).bg;
-  cpi_new.v = cpis.at(clone_t).v - op->gravity * cpiv1.DT + R_GtoIk.transpose() * cpiv1.beta_tau;
+  cpi_new.v = cpis.at(clone_t).v - op->gravity * cpiv1.DT + R_GtoI0.transpose() * cpiv1.beta_tau;
   cpi_new.bg = cpis.at(clone_t).bg;
   cpi_new.ba = cpis.at(clone_t).ba;
   cpi_new.Q.block(0, 0, 3, 3) = cpiv1.P_meas.block(0, 0, 3, 3);

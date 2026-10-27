@@ -1,3 +1,4 @@
+#include <stdexcept>
 /*
  * MINS: Efficient and Robust Multisensor-aided Inertial Navigation System
  * Copyright (C) 2019-2026 Woosik Lee
@@ -127,6 +128,16 @@ void mins::OptionsCamera::load_i(const std::shared_ptr<ov_core::YamlParser> &par
   std::vector<double> int2 = {0, 0, 0, 0};
   parser->parse_external(f, "cam" + std::to_string(i), "intrinsics", int1);
   parser->parse_external(f, "cam" + std::to_string(i), "distortion_coeffs", int2);
+  // Distortion model
+  std::string dist_model = "radtan";
+  parser->parse_external(f, "cam" + std::to_string(i), "distortion_model", dist_model);
+  distortion_model.insert({i, dist_model});
+  if (int1.size() != 4 ||
+      (dist_model == "radtan" && int2.size() != 4 && int2.size() != 5) ||
+      (dist_model == "equidistant" && int2.size() != 4) ||
+      (dist_model != "radtan" && dist_model != "equidistant"))
+    throw std::runtime_error("Unsupported camera intrinsics or distortion model/count");
+  fixed_k3[i] = dist_model == "radtan" && int2.size() == 5 ? int2[4] : 0.0;
   Eigen::VectorXd intrinsic = Eigen::VectorXd::Zero(8);
   intrinsic << int1[0], int1[1], int1[2], int1[3], int2[0], int2[1], int2[2], int2[3];
   intrinsic(0) /= (downsample) ? 2.0 : 1.0;
@@ -135,10 +146,6 @@ void mins::OptionsCamera::load_i(const std::shared_ptr<ov_core::YamlParser> &par
   intrinsic(3) /= (downsample) ? 2.0 : 1.0;
   intrinsics.insert({i, intrinsic});
 
-  // Distortion model
-  std::string dist_model = "radtan";
-  parser->parse_external(f, "cam" + std::to_string(i), "distortion_model", dist_model);
-  distortion_model.insert({i, dist_model});
 
   // FOV / resolution
   std::vector<int> wh_i = {1, 1};

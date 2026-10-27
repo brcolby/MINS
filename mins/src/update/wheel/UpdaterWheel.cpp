@@ -36,6 +36,11 @@ static constexpr size_t MAX_TIME_HISTORY = 100;
 
 UpdaterWheel::UpdaterWheel(StatePtr state) : state(state) { Chi = make_shared<UpdaterStatistics>(state->op->wheel->chi2_mult, "WHEEL"); }
 
+void UpdaterWheel::reset_measurements() {
+  data_stack.clear(); t_hist.clear();
+  last_updated_clone_time = state->initialized ? state->newest_clone_time() : -1;
+}
+
 void UpdaterWheel::try_update() {
   // If we just want to update the oldest to newest
   if (state->op->wheel->reuse_of_information) {

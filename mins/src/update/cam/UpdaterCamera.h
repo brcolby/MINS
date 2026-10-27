@@ -51,6 +51,8 @@ public:
 
   /// return images used in last update for visualization
   cv::Mat get_track_img(int cam_id);
+  // Read the existing tracker for stationary detection; no second tracker.
+  DB_ptr get_tracking_database(int cam_id);
 
   /// Chi information
   map<int, shared_ptr<UpdaterStatistics>> Chi;

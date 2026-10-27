@@ -87,7 +87,8 @@ public:
    * @param width Width of the camera (raw pixels)
    * @param height Height of the camera (raw pixels)
    */
-  CamRadtan(int width, int height) : CamBase(width, height) {}
+  CamRadtan(int width, int height, double k3 = 0.0) : CamBase(width, height), fixed_k3(k3) {}
+  const double fixed_k3; // measured k3, not an online calibration state
 
   ~CamRadtan() {}
 
@@ -100,7 +101,7 @@ public:
 
     // Determine what camera parameters we should use
     cv::Matx33d camK = camera_k_OPENCV;
-    cv::Vec4d camD = camera_d_OPENCV;
+    cv::Vec<double, 5> camD(camera_d_OPENCV(0), camera_d_OPENCV(1), camera_d_OPENCV(2), camera_d_OPENCV(3), fixed_k3);
 
     // Convert to opencv format
     cv::Mat mat(1, 2, CV_32F);
@@ -109,7 +110,8 @@ public:
     mat = mat.reshape(2); // Nx1, 2-channel
 
     // Undistort it!
-    cv::undistortPoints(mat, mat, camK, camD);
+    cv::undistortPoints(mat, mat, camK, camD, cv::noArray(), cv::noArray(),
+                        cv::TermCriteria(cv::TermCriteria::COUNT | cv::TermCriteria::EPS, 30, 1e-12));
 
     // Construct our return vector
     Eigen::Vector2f pt_out;
@@ -133,9 +135,9 @@ public:
     double r = std::sqrt(uv_norm(0) * uv_norm(0) + uv_norm(1) * uv_norm(1));
     double r_2 = r * r;
     double r_4 = r_2 * r_2;
-    double x1 = uv_norm(0) * (1 + cam_d(4) * r_2 + cam_d(5) * r_4) + 2 * cam_d(6) * uv_norm(0) * uv_norm(1) +
+    double x1 = uv_norm(0) * (1 + cam_d(4) * r_2 + cam_d(5) * r_4 + fixed_k3 * r_4 * r_2) + 2 * cam_d(6) * uv_norm(0) * uv_norm(1) +
                 cam_d(7) * (r_2 + 2 * uv_norm(0) * uv_norm(0));
-    double y1 = uv_norm(1) * (1 + cam_d(4) * r_2 + cam_d(5) * r_4) + cam_d(6) * (r_2 + 2 * uv_norm(1) * uv_norm(1)) +
+    double y1 = uv_norm(1) * (1 + cam_d(4) * r_2 + cam_d(5) * r_4 + fixed_k3 * r_4 * r_2) + cam_d(6) * (r_2 + 2 * uv_norm(1) * uv_norm(1)) +
                 2 * cam_d(7) * uv_norm(0) * uv_norm(1);
 
     // Return the distorted point
@@ -168,17 +170,17 @@ public:
     double x_2 = uv_norm(0) * uv_norm(0);
     double y_2 = uv_norm(1) * uv_norm(1);
     double x_y = uv_norm(0) * uv_norm(1);
-    H_dz_dzn(0, 0) = cam_d(0) * ((1 + cam_d(4) * r_2 + cam_d(5) * r_4) + (2 * cam_d(4) * x_2 + 4 * cam_d(5) * x_2 * r_2) +
+    H_dz_dzn(0, 0) = cam_d(0) * ((1 + cam_d(4) * r_2 + cam_d(5) * r_4 + fixed_k3 * r_4 * r_2) + (2 * cam_d(4) * x_2 + 4 * cam_d(5) * x_2 * r_2 + 6 * fixed_k3 * x_2 * r_4) +
                                  2 * cam_d(6) * y + (2 * cam_d(7) * x + 4 * cam_d(7) * x));
-    H_dz_dzn(0, 1) = cam_d(0) * (2 * cam_d(4) * x_y + 4 * cam_d(5) * x_y * r_2 + 2 * cam_d(6) * x + 2 * cam_d(7) * y);
-    H_dz_dzn(1, 0) = cam_d(1) * (2 * cam_d(4) * x_y + 4 * cam_d(5) * x_y * r_2 + 2 * cam_d(6) * x + 2 * cam_d(7) * y);
-    H_dz_dzn(1, 1) = cam_d(1) * ((1 + cam_d(4) * r_2 + cam_d(5) * r_4) + (2 * cam_d(4) * y_2 + 4 * cam_d(5) * y_2 * r_2) +
+    H_dz_dzn(0, 1) = cam_d(0) * (2 * cam_d(4) * x_y + 4 * cam_d(5) * x_y * r_2 + 6 * fixed_k3 * x_y * r_4 + 2 * cam_d(6) * x + 2 * cam_d(7) * y);
+    H_dz_dzn(1, 0) = cam_d(1) * (2 * cam_d(4) * x_y + 4 * cam_d(5) * x_y * r_2 + 6 * fixed_k3 * x_y * r_4 + 2 * cam_d(6) * x + 2 * cam_d(7) * y);
+    H_dz_dzn(1, 1) = cam_d(1) * ((1 + cam_d(4) * r_2 + cam_d(5) * r_4 + fixed_k3 * r_4 * r_2) + (2 * cam_d(4) * y_2 + 4 * cam_d(5) * y_2 * r_2 + 6 * fixed_k3 * y_2 * r_4) +
                                  2 * cam_d(7) * x + (2 * cam_d(6) * y + 4 * cam_d(6) * y));
 
     // Calculate distorted coordinates for radtan
-    double x1 = uv_norm(0) * (1 + cam_d(4) * r_2 + cam_d(5) * r_4) + 2 * cam_d(6) * uv_norm(0) * uv_norm(1) +
+    double x1 = uv_norm(0) * (1 + cam_d(4) * r_2 + cam_d(5) * r_4 + fixed_k3 * r_4 * r_2) + 2 * cam_d(6) * uv_norm(0) * uv_norm(1) +
                 cam_d(7) * (r_2 + 2 * uv_norm(0) * uv_norm(0));
-    double y1 = uv_norm(1) * (1 + cam_d(4) * r_2 + cam_d(5) * r_4) + cam_d(6) * (r_2 + 2 * uv_norm(1) * uv_norm(1)) +
+    double y1 = uv_norm(1) * (1 + cam_d(4) * r_2 + cam_d(5) * r_4 + fixed_k3 * r_4 * r_2) + cam_d(6) * (r_2 + 2 * uv_norm(1) * uv_norm(1)) +
                 2 * cam_d(7) * uv_norm(0) * uv_norm(1);
 
     // Compute the Jacobian in respect to the intrinsics

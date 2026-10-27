@@ -51,6 +51,8 @@ public:
 
   /// Get wheel measurement
   void feed_measurement(const WheelData &data);
+  // Gestalt: never integrate across missing/ambiguous wheel intervals.
+  void reset_measurements();
 
   /// Try update with available measurements
   void try_update();

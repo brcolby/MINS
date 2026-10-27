@@ -1,3 +1,4 @@
+#include "utils/gestalt_hooks.h"
 /*
  * MINS: Efficient and Robust Multisensor-aided Inertial Navigation System
  * Copyright (C) 2019-2026 Woosik Lee
@@ -8,6 +9,9 @@
  */
 
 #include "UpdaterGPS.h"
+#include <stdexcept>
+
+
 #include "GPSTypes.h"
 #include "MathGPS.h"
 #include "PoseJPL_4DOF.h"
@@ -431,6 +435,7 @@ void UpdaterGPS::construct_init_linsys(vector<GPSData> data_init, Matrix3d RWtoE
 }
 
 void UpdaterGPS::transform_state_to_ENU() {
+  gestalt_mins_gps_before(state->imu->Rot().data(), state->imu->pos().data());
   // Marginalize all the SLAM features as they may inject inconsistency after transformation
   for (auto &feat : state->cam_SLAM_features)
     feat.second->should_marg = true;
@@ -488,9 +493,12 @@ void UpdaterGPS::transform_state_to_ENU() {
   MatrixXd newCov = H * state->cov * H.transpose();
   StateHelper::marginalize(state, state->trans_WtoE);
   state->cov = newCov * state->op->gps->init_cov_inflation;
+  gestalt_mins_gps_after(state->imu->Rot().data(), state->imu->pos().data());
   PRINT2(CYAN "[GPS]: Performed state transform from World to ENU\n" RESET);
 }
 void UpdaterGPS::feed_measurement(const GPSData &data) {
+  if (data_stack.size() >= 4096)
+    throw std::runtime_error("GNSS pending measurement limit; alignment/update stalled");
   data_stack.push_back(data);
   t_hist.at(data.id).size() > 100 ? t_hist.at(data.id).pop_front() : void(); // remove if we have too many
   t_hist.at(data.id).push_back(data.time);

@@ -1,3 +1,4 @@
+#include "utils/gestalt_hooks.h"
 /*
  * MINS: Efficient and Robust Multisensor-aided Inertial Navigation System
  * Copyright (C) 2019-2026 Woosik Lee
@@ -8,6 +9,14 @@
  */
 
 #include "StateHelper.h"
+#include <cmath>
+#include <iomanip>
+#include <sstream>
+#include <stdexcept>
+
+
+
+
 #include "State.h"
 #include "cam/CamBase.h"
 #include "options/OptionsCamera.h"
@@ -89,18 +98,25 @@ void StateHelper::EKFPropagation(shared_ptr<State> state, const VEC_TYPE &order_
   state->cov.block(start_id, start_id, phi_size, phi_size) = Phi_Cov_PhiT;
 
   // We should check if we are not positive semi-definitate (i.e. negative diagionals is not s.p.d)
+  if (!state->cov.allFinite()) throw std::runtime_error("MINS propagation covariance is nonfinite");
   VectorXd diags = state->cov.diagonal();
-  bool found_neg = false;
   for (int i = 0; i < diags.rows(); i++) {
     if (diags(i) < 0.0) {
-      PRINT3(RED "StateHelper::EKFPropagation() - diagonal at %d is %.6f\n" RESET, i, diags(i));
-      found_neg = true;
+      std::ostringstream detail;
+      detail << std::setprecision(17) << "MINS propagation covariance diagonal " << i << " = " << diags(i);
+      throw std::runtime_error(detail.str());
     }
   }
-  assert(!found_neg);
 }
 
 bool StateHelper::EKFUpdate(shared_ptr<State> state, const VEC_TYPE &H_order, const MatrixXd &H, const VectorXd &res, const MatrixXd &R, string type) {
+  if (res.size() == 0 || H.rows() != res.rows() || R.rows() != res.rows() ||
+      R.cols() != res.rows() || !H.allFinite() || !res.allFinite() ||
+      !R.allFinite() || !state->cov.allFinite()) {
+    gestalt_mins_covariance_rejected(type.c_str());
+    return false;
+  }
+  if (type == "GPS" && res.size() > 0) gestalt_mins_gps_before(state->imu->Rot().data(), state->imu->pos().data());
 
   //==========================================================
   //==========================================================
@@ -141,11 +157,24 @@ bool StateHelper::EKFUpdate(shared_ptr<State> state, const VEC_TYPE &H_order, co
 
   // Compute Kalman gain
   MatrixXd Sinv = MatrixXd::Identity(R.rows(), R.rows());
-  S.selfadjointView<Upper>().llt().solveInPlace(Sinv);
+  Eigen::LLT<MatrixXd> innovation(S.selfadjointView<Upper>());
+  if (innovation.info() != Eigen::Success) {
+    gestalt_mins_covariance_rejected(type.c_str());
+    return false;
+  }
+  innovation.solveInPlace(Sinv);
+  if (!Sinv.allFinite()) {
+    gestalt_mins_covariance_rejected(type.c_str());
+    return false;
+  }
   MatrixXd K = M_a * Sinv.selfadjointView<Upper>();
 
   // dx, dx_Cov
   VectorXd dx = K * res;
+  if (!dx.allFinite()) {
+    gestalt_mins_covariance_rejected(type.c_str());
+    return false;
+  }
   MatrixXd dx_Cov(state->cov.rows(), state->cov.rows());
   dx_Cov.triangularView<Upper>() = (K * M_a.transpose());
 
@@ -154,8 +183,9 @@ bool StateHelper::EKFUpdate(shared_ptr<State> state, const VEC_TYPE &H_order, co
   VectorXd diag2 = dx_Cov.diagonal();
   assert(diag1.rows() == diag2.rows());
   for (int i = 0; i < diag1.rows(); i++) {
-    if (diag1(i) - diag2(i) < 0.0) {
+    if (!std::isfinite(diag1(i) - diag2(i)) || diag1(i) - diag2(i) < 0.0) {
       PRINT3(RED "StateHelper::EKFUpdate::%s - diagonal has %.2f\n" RESET, type.c_str(), diag1(i) - diag2(i));
+      gestalt_mins_covariance_rejected(type.c_str());
       return false;
     }
   }
@@ -178,6 +208,8 @@ bool StateHelper::EKFUpdate(shared_ptr<State> state, const VEC_TYPE &H_order, co
 
   // build est polynomial for the new state when not using imu prediction
   state->op->use_imu_res ? void() : state->build_polynomial_data(false);
+  if (type == "GPS" && res.size() > 0) gestalt_mins_gps_after(state->imu->Rot().data(), state->imu->pos().data());
+  if (res.size() > 0) gestalt_mins_update(type.c_str());
   return true;
 }
 

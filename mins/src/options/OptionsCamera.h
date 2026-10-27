@@ -51,6 +51,7 @@ struct OptionsCamera {
   /// Map between camid and camera intrinsics (fx, fy, cx, cy, d1...d4, cam_w, cam_h)
   std::map<size_t, Eigen::VectorXd> intrinsics;
   std::map<size_t, std::string> distortion_model;
+  std::map<size_t, double> fixed_k3; // measured, not an online state
   std::map<size_t, std::vector<int>> wh;
 
   /// Map between camid and camera extrinsics (q_ItoC, p_IinC).

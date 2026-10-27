@@ -39,7 +39,9 @@ void Propagator::propagate(double timestamp) {
   // This uses the zero'th order quat, and then constant acceleration discrete
   Matrix15 Phi_summed = Matrix15::Identity();
   Matrix15 Qd_summed = Matrix15::Zero();
-  Matrix3d R_GtoIk = state->imu->Rot();
+  // Cumulative beta stays in the integration anchor frame.
+  const Matrix3d R_GtoI0 = cpiv1 != nullptr
+      ? state->clones.at(cpi_clone_t)->Rot() : state->imu->Rot();
   for (size_t i = 0; i < data.size() - 1; i++) {
 
     // Get the next state Jacobian and noise Jacobian for this IMU reading
@@ -66,14 +68,13 @@ void Propagator::propagate(double timestamp) {
       cpi.R_I0toIk = cpiv1->R_k2tau;
       cpi.alpha_I0toIk = cpiv1->alpha_tau;
       cpi.w = data[i + 1].wm - state->imu->bias_g();
-      cpi.v = state->cpis.at(cpi_clone_t).v - state->op->gravity * cpiv1->DT + R_GtoIk.transpose() * cpiv1->beta_tau;
+      cpi.v = state->cpis.at(cpi_clone_t).v - state->op->gravity * cpiv1->DT + R_GtoI0.transpose() * cpiv1->beta_tau;
       cpi.bg = state->cpis.at(cpi_clone_t).bg;
       cpi.ba = state->cpis.at(cpi_clone_t).ba;
       cpi.Q.block(0, 0, 3, 3) = cpiv1->P_meas.block(0, 0, 3, 3);
       cpi.Q.block(0, 3, 3, 3) = cpiv1->P_meas.block(0, 12, 3, 3);
       cpi.Q.block(3, 0, 3, 3) = cpiv1->P_meas.block(12, 0, 3, 3);
       cpi.Q.block(3, 3, 3, 3) = cpiv1->P_meas.block(12, 12, 3, 3);
-      R_GtoIk = cpiv1->R_k2tau * R_GtoIk; // integrate orientation
       state->cpis.insert({cpi.t, cpi});
     }
   }
@@ -125,7 +126,7 @@ bool Propagator::select_imu_readings(double time0, double time1, vector<ImuData>
 
   // Add the middle data
   for (i == 0 ? i = 0 : i--; i < imu_data.size() - 1; i++) {
-    if (time0 < imu_data.at(i).timestamp && imu_data.at(i + 1).timestamp < time1) {
+    if (time0 < imu_data.at(i).timestamp && imu_data.at(i).timestamp < time1) {
       prop_data.push_back(imu_data.at(i));
     }
     if (imu_data.at(i + 1).timestamp > time1)

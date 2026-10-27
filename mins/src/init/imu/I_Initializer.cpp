@@ -85,8 +85,8 @@ bool I_Initializer::initialization(Matrix<double, 17, 1> &imustate) {
   // PRINT2(BOLDGREEN "[INIT-IMU]: IMU excitation, %.4f,%.4f\n" RESET, a_var_1to0, a_var_2to1);
 
   // If it is below the threshold and we want to wait till we detect a jerk
-  if (a_var_1to0 < op->init->imu_thresh) {
-    PRINT2(YELLOW "[INIT-IMU]: %.2f no IMU excitation, below threshold %.4f < %.4f\n" RESET, newesttime, a_var_1to0, op->init->imu_thresh);
+  if (a_var_1to0 > op->init->imu_thresh) {
+    PRINT2(YELLOW "[INIT-IMU]: %.2f startup motion, above threshold %.4f > %.4f\n" RESET, newesttime, a_var_1to0, op->init->imu_thresh);
     return false;
   }
 
@@ -101,7 +101,7 @@ bool I_Initializer::initialization(Matrix<double, 17, 1> &imustate) {
   Vector3d z_axis = a_avg_2to1 / a_avg_2to1.norm();
 
   // Create an x_axis
-  Vector3d e_1(1, 0, 0);
+  Vector3d e_1 = std::abs(z_axis(0)) < 0.9 ? Vector3d(1, 0, 0) : Vector3d(0, 1, 0);
 
   // Make x_axis perpendicular to z
   Vector3d x_axis = e_1 - z_axis * z_axis.transpose() * e_1;
