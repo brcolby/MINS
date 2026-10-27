@@ -100,6 +100,9 @@ public:
   /// clone time closest to t_given but newer
   bool closest_newer_clone_time(double t_given, double &t);
 
+  /// Capture-time interpolation excludes separately retained reference poses.
+  vector<double> interpolation_clone_times() const;
+
   /// two clone times that bounds t_given
   bool bounding_times(double t_given, double &t0, double &t1);
 

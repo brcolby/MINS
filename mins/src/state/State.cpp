@@ -407,6 +407,14 @@ bool State::check_polynomial(double t_given) {
   return true;
 }
 
+vector<double> State::interpolation_clone_times() const {
+  vector<double> times;
+  times.reserve(clones.size());
+  for (const auto &clone : clones)
+    if (!retained_clones.count(clone.first)) times.push_back(clone.first);
+  return times;
+}
+
 void State::build_polynomial_data(bool fej) {
 
   // return if unable to build polynomial
@@ -419,13 +427,11 @@ void State::build_polynomial_data(bool fej) {
   }
 
   // Get the times of our pose clones
-  vector<double> clone_times;
-  for (auto &clone : clones)
-    clone_times.push_back(clone.first);
+  const vector<double> clone_times = interpolation_clone_times();
 
   // Build data for each possible starting polynomial
   map<double, State::polynomial_data> polynomial;
-  for (size_t start = 0; start < clones.size() - op->intr_order; start++) {
+  for (size_t start = 0; start + op->intr_order < clone_times.size(); start++) {
 
     vector<shared_ptr<ov_type::PoseJPL>> poses;
     vector<double> times;
@@ -509,8 +515,9 @@ void State::add_polynomial() {
 }
 
 void State::add_polynomial(bool fej) {
+  const auto clone_times = interpolation_clone_times();
   // return if unable to build polynomial
-  if ((int)clones.size() < op->intr_order + 1) {
+  if ((int)clone_times.size() < op->intr_order + 1) {
     PRINT1(RED "[State] Cannot add polynomial. #clones: %d, #required: %d\n" RESET, (int)clones.size(), op->intr_order + 1);
     _polynomial_fej.clear();
     _polynomial_est.clear();
@@ -519,16 +526,15 @@ void State::add_polynomial(bool fej) {
 
   // Delete polynomial info we do not have clone with
   for (auto it = _polynomial_fej.begin(); it != _polynomial_fej.end();)
-    clones.find(it->first) == clones.end() ? _polynomial_fej.erase(it++) : it++;
+    (clones.find(it->first) == clones.end() || retained_clones.count(it->first)) ? _polynomial_fej.erase(it++) : it++;
   for (auto it = _polynomial_est.begin(); it != _polynomial_est.end();)
-    clones.find(it->first) == clones.end() ? _polynomial_est.erase(it++) : it++;
+    (clones.find(it->first) == clones.end() || retained_clones.count(it->first)) ? _polynomial_est.erase(it++) : it++;
 
   // grab last poses
-  auto it = clones.rbegin();
+  auto it = clone_times.rbegin();
   vector<pair<double, shared_ptr<ov_type::PoseJPL>>> poses;
-  for (int i = 0; i < op->intr_order + 1; i++) {
-    poses.push_back({it->first, it->second});
-    it++;
+  for (int i = 0; i < op->intr_order + 1; i++, it++) {
+    poses.push_back({*it, clones.at(*it)});
   }
   // reverse the order since it is new to old.
   reverse(poses.begin(), poses.end());
@@ -808,19 +814,11 @@ bool State::get_interpolated_jacobian(double t_given, Matrix3d &RGtoI, Vector3d 
 }
 
 bool State::bounding_times(double t_given, double &t0, double &t1) {
-  // return if we have less than 2 clones
-  if (clones.size() < 2)
+  const auto clone_times = interpolation_clone_times();
+  if (clone_times.size() < 2)
     return false;
-
-  // return if out of clone window
-  if (t_given < clones.begin()->first - op->dt_exp || t_given > clones.rbegin()->first + op->dt_exp)
+  if (t_given < clone_times.front() - op->dt_exp || t_given > clone_times.back() + op->dt_exp)
     return false;
-
-  // Get the times of our pose clones
-  vector<double> clone_times;
-  clone_times.reserve(clones.size());
-  for (auto &clone : clones)
-    clone_times.push_back(clone.first);
 
   for (int i = 0; i < (int)clone_times.size() - 1; i++) {
     if (clone_times.at(i) - op->dt_exp <= t_given && t_given <= clone_times.at(i + 1) + op->dt_exp) {
@@ -834,7 +832,8 @@ bool State::bounding_times(double t_given, double &t0, double &t1) {
 }
 
 bool State::bounding_poses_n_check(size_t n_order, double meas_t) {
-  return (clones.begin()->first - op->dt_exp <= meas_t && meas_t <= clones.rbegin()->first + op->dt_exp && clones.size() >= n_order + 1);
+  const auto times = interpolation_clone_times();
+  return times.size() >= n_order + 1 && times.front() - op->dt_exp <= meas_t && meas_t <= times.back() + op->dt_exp;
 }
 
 bool State::bounding_poses_n(size_t n_order, vector<shared_ptr<ov_type::PoseJPL>> &poses, vector<double> &times, double t_given) {
@@ -850,11 +849,7 @@ bool State::bounding_poses_n(size_t n_order, vector<shared_ptr<ov_type::PoseJPL>
 
   // Get the times of our pose clones
   // TODO: can definitely can improve this and use the map
-  vector<double> clone_times;
-  for (auto &clone : clones) {
-    clone_times.push_back(clone.first);
-  }
-  sort(clone_times.begin(), clone_times.end());
+  const auto clone_times = interpolation_clone_times();
 
   // Return if we don't have enough poses
   if (clone_times.size() < n_order + 1)
@@ -926,7 +921,14 @@ double State::oldest_keyframe_time() {
   if (clones.empty())
     return -INFINITY;
 
-  return clones.begin()->first;
+  // Retained reference geometry needs its pose/covariance, not an unbounded
+  // raw IMU archive. GNSS keyframes still retain the interpolation history
+  // needed while alignment is pending.
+  for (const auto &clone : clones) {
+    if (!retained_clones.count(clone.first))
+      return clone.first;
+  }
+  return -INFINITY;
 }
 
 double State::oldest_clone_time() {
@@ -985,6 +987,7 @@ bool State::closest_clone_time(double t_given, double &t) {
   double t_diff = INFINITY;
   bool found = false;
   for (pair<const double, shared_ptr<ov_type::PoseJPL>> &clone : clones) {
+    if (retained_clones.count(clone.first)) continue;
     if (abs(t_given - clone.first) < t_diff) {
       t_diff = abs(t_given - clone.first);
       t = clone.first;
@@ -1001,6 +1004,7 @@ bool State::closest_clone_time_not_imu(double t_given, double &t) {
   double t_diff = INFINITY;
   bool found = false;
   for (pair<const double, shared_ptr<ov_type::PoseJPL>> &clone : clones) {
+    if (retained_clones.count(clone.first)) continue;
     if (abs(t_given - clone.first) < t_diff && clone.second->id() != imu->id()) {
       t_diff = abs(t_given - clone.first);
       t = clone.first;
@@ -1017,6 +1021,7 @@ bool State::closest_older_clone_time(double t_given, double &t) {
   t = -INFINITY;
   bool found = false;
   for (pair<const double, shared_ptr<ov_type::PoseJPL>> &clone : clones) {
+    if (retained_clones.count(clone.first)) continue;
     if (clone.first > t && clone.first < t_given) {
       t = clone.first;
       found = true;
@@ -1032,6 +1037,7 @@ bool State::closest_newer_clone_time(double t_given, double &t) {
   t = INFINITY;
   bool found = false;
   for (pair<const double, shared_ptr<ov_type::PoseJPL>> &clone : clones) {
+    if (retained_clones.count(clone.first)) continue;
     if (clone.first < t && clone.first > t_given) {
       t = clone.first;
       found = true;
@@ -1379,7 +1385,7 @@ bool State::have_jacobian(double t_given, string sensor, int id) {
         // Check the clone times key
         for (auto clone_time : intr_jcb.at(sensor).at(id).at(t_given).times) {
           // Return false if we have clone time mismatch.
-          if (clones.find(clone_time) == clones.end()) {
+          if (clones.find(clone_time) == clones.end() || retained_clones.count(clone_time)) {
             PRINT0(YELLOW "State::have_jacobian: Not have clone(%.4f) for sensor(%s) id(%d) t(%.4f)\n" RESET, clone_time, sensor.c_str(), id, t_given);
             return false;
           }
@@ -1399,7 +1405,9 @@ bool State::have_jacobian(double t_given, string sensor, int id) {
 }
 void State::flush_old_data() {
   // Flush old data for faster std::map usage
-  double old_t = clones.begin()->first;
+  const auto times = interpolation_clone_times();
+  if (times.empty()) return;
+  double old_t = times.front();
   // Flush old jacobian data
   for (auto &sensor : intr_jcb) {
     for (auto &id : sensor.second) {
