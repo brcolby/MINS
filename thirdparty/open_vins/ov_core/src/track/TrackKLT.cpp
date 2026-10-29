@@ -22,6 +22,7 @@
 #include <chrono>
 
 #include "TrackKLT.h"
+#include "GeometricVerification.h"
 
 #include "Grider_FAST.h"
 #include "Grider_GRID.h"
@@ -861,10 +862,11 @@ void TrackKLT::perform_matching(const std::vector<cv::Mat> &img0pyr, const std::
 
   // Normalize these points, so we can then do ransac
   // We don't want to do ransac on distorted image uvs since the mapping is nonlinear
-  std::vector<cv::Point2f> pts0_n, pts1_n;
+  std::vector<cv::Point2f> pts0_n(pts0.size()), pts1_n(pts1.size());
   for (size_t i = 0; i < pts0.size(); i++) {
-    pts0_n.push_back(camera_calib.at(id0)->undistort_cv(pts0.at(i)));
-    pts1_n.push_back(camera_calib.at(id1)->undistort_cv(pts1.at(i)));
+    if (!mask_klt[i]) continue;
+    pts0_n[i] = camera_calib.at(id0)->undistort_cv(pts0[i]);
+    pts1_n[i] = camera_calib.at(id1)->undistort_cv(pts1[i]);
   }
 
   // Do RANSAC outlier rejection (note since we normalized the max pixel error is now in the normalized cords)
@@ -872,7 +874,7 @@ void TrackKLT::perform_matching(const std::vector<cv::Mat> &img0pyr, const std::
   double max_focallength_img0 = std::max(camera_calib.at(id0)->get_K()(0, 0), camera_calib.at(id0)->get_K()(1, 1));
   double max_focallength_img1 = std::max(camera_calib.at(id1)->get_K()(0, 0), camera_calib.at(id1)->get_K()(1, 1));
   double max_focallength = std::max(max_focallength_img0, max_focallength_img1);
-  cv::findFundamentalMat(pts0_n, pts1_n, cv::FM_RANSAC, 2.0 / max_focallength, 0.999, mask_rsc);
+  mask_rsc = fundamental_inliers(pts0_n, pts1_n, mask_klt, 2.0 / max_focallength);
 
   // Loop through and record only ones that are valid
   for (size_t i = 0; i < mask_klt.size(); i++) {
