@@ -14,3 +14,11 @@ The ground prior needs the optimized retained-reference API and the
 `mins/tests/gestalt` check the update frames, Jacobians and observability.
 Application protocols, sensor acquisition and local/global output frames live in
 the embedding application.
+
+Bounded acquisition gaps may carry `ImuData.noise_variance_scale` (default 1).
+Propagation, CPI generation/reintegration and endpoint interpolation preserve this
+per-interval uncertainty without changing measured timestamps or inertial means.
+The input adapter owns the loss budget; this library validates finite scales in
+1..4096. ZUPT clears its evidence on a scaled sample, requiring a fresh complete
+quiet window before velocity/bias updates. Numerical regressions check unchanged
+means/Jacobians and scaled process/preintegration covariance in both directions.

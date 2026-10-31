@@ -29,6 +29,8 @@
 #include "CpiBase.h"
 
 #include <Eigen/Dense>
+#include <cmath>
+#include <stdexcept>
 
 namespace ov_core {
 
@@ -65,6 +67,14 @@ public:
 
   virtual ~CpiV1() {}
 
+  // Per-integration-interval uncertainty; leaves calibrated noise unchanged.
+  void set_noise_variance_scale(double value) {
+    if (!std::isfinite(value) || value < 1.0 || value > 4096.0)
+      throw std::invalid_argument("invalid CPI IMU variance multiplier");
+    noise_variance_scale = value;
+  }
+
+
   /**
    * @brief Our precompound function for Model 1
    * @param[in] t_0 first IMU timestamp
@@ -80,6 +90,8 @@ public:
   void feed_IMU(double t_0, double t_1, Eigen::Matrix<double, 3, 1> w_m_0, Eigen::Matrix<double, 3, 1> a_m_0,
                 Eigen::Matrix<double, 3, 1> w_m_1 = Eigen::Matrix<double, 3, 1>::Zero(),
                 Eigen::Matrix<double, 3, 1> a_m_1 = Eigen::Matrix<double, 3, 1>::Zero());
+private:
+  double noise_variance_scale = 1.0;
 };
 
 } // namespace ov_core

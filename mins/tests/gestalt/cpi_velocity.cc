@@ -68,6 +68,11 @@ struct Fixture {
   ~Fixture() { state->hook_propagator(nullptr); }
 };
 
+struct InspectablePropagator : mins::Propagator {
+  using mins::Propagator::Propagator;
+  using mins::Propagator::predict_and_compute;
+};
+
 static void check_velocity(const mins::State::CPI &value) {
   const double dt = value.t - 1;
   // Integrate R_world_from_initial * R_z(t) * [1,0,0] exactly.
@@ -100,6 +105,28 @@ int main(int argc, char **argv) try {
     if (!forward.state->have_cpi(1.055)) throw std::runtime_error("CPI interpolation failed");
     if ((forward.state->cpis.at(1.055).w - Eigen::Vector3d(0, 0, 1)).norm() > 1e-12)
       throw std::runtime_error("interpolated CPI lost angular velocity");
+  } else if (mode == "uncertainty") {
+    Fixture nominal, uncertain;
+    InspectablePropagator a(nominal.state), b(uncertain.state);
+    ov_core::ImuData left, right;
+    left.timestamp = 1; right.timestamp = 1.027;
+    left.wm = right.wm = Eigen::Vector3d(0.3, 0.1, 0.2);
+    left.am = right.am = Eigen::Vector3d(1, 2, 9.8);
+    Eigen::Matrix<double, 15, 15> f1, f2, q1, q2;
+    a.predict_and_compute(left, right, f1, q1);
+    right.noise_variance_scale = 9;
+    b.predict_and_compute(left, right, f2, q2);
+    if (!f1.isApprox(f2, 1e-12) || !q2.isApprox(9*q1, 1e-12) ||
+        !nominal.state->imu->value().isApprox(uncertain.state->imu->value(), 1e-12))
+      throw std::runtime_error("gap noise changed means/Jacobians or failed to scale process covariance");
+    const auto cut = mins::Propagator::interpolate_data(left, right, 1.01);
+    if (cut.noise_variance_scale != 9 || cut.timestamp != 1.01)
+      throw std::runtime_error("interpolation lost acquisition uncertainty");
+    right.noise_variance_scale = 0;
+    bool rejected = false;
+    try { mins::Propagator::interpolate_data(left, right, 1.01); }
+    catch (const std::invalid_argument &) { rejected = true; }
+    if (!rejected) throw std::runtime_error("invalid uncertainty accepted");
   } else {
     throw std::runtime_error("unknown check");
   }

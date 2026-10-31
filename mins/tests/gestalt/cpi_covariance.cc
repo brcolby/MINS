@@ -13,8 +13,9 @@ void near(double actual, double expected) {
 }
 
 ov_core::CpiV1 integrate(double direction, const Eigen::Vector3d &w,
-                        const Eigen::Vector3d &a) {
+                        const Eigen::Vector3d &a, double variance = 1.0) {
   ov_core::CpiV1 cpi(0.02, 0.003, 0.1, 0.005, true);
+  cpi.set_noise_variance_scale(variance);
   cpi.setLinearizationPoints(Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
   for (int index = 0; index < 40; ++index) {
     const double t = 1.0 + direction * index * 0.005;
@@ -57,7 +58,13 @@ int main() {
       near(translated.beta_tau(axis), acceleration(axis) * translated.DT);
       near(translated.alpha_tau(axis), 0.5 * acceleration(axis) * translated.DT * translated.DT);
     }
-    integrate(direction, Eigen::Vector3d(0.3, -0.1, 0.4), acceleration);
+    const auto nominal = integrate(direction, Eigen::Vector3d(0.3, -0.1, 0.4), acceleration);
+    const auto uncertain = integrate(direction, Eigen::Vector3d(0.3, -0.1, 0.4), acceleration, 9.0);
+    if (!uncertain.P_meas.isApprox(9 * nominal.P_meas, 1e-12) ||
+        !uncertain.alpha_tau.isApprox(nominal.alpha_tau, 1e-12) ||
+        !uncertain.beta_tau.isApprox(nominal.beta_tau, 1e-12) ||
+        !uncertain.R_k2tau.isApprox(nominal.R_k2tau, 1e-12))
+      throw std::runtime_error("IMU uncertainty did not scale covariance independently of means");
   }
   std::cout << "Forward/reverse covariance, cross terms and signed means passed\n";
 }

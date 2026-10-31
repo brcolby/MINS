@@ -25,6 +25,11 @@
 #include <Eigen/Eigen>
 #include <opencv2/opencv.hpp>
 #include <vector>
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+
+#define OV_IMU_VARIANCE_SCALE_VERSION 1
 
 namespace ov_core {
 
@@ -36,6 +41,9 @@ struct ImuData {
   /// Timestamp of the reading
   double timestamp;
 
+  /// Explicit acquisition-gap process-noise variance multiplier; nominal is 1.
+  double noise_variance_scale = 1.0;
+
   /// Gyroscope reading, angular velocity (rad/s)
   Eigen::Matrix<double, 3, 1> wm;
 
@@ -45,6 +53,14 @@ struct ImuData {
   /// Sort function to allow for using of STL containers
   bool operator<(const ImuData &other) const { return timestamp < other.timestamp; }
 };
+
+// Preserve uncertainty when cutting an IMU interval at a camera/clone epoch.
+inline double imu_interval_variance(const ImuData &a, const ImuData &b) {
+  for (double value : {a.noise_variance_scale, b.noise_variance_scale})
+    if (!std::isfinite(value) || value < 1.0 || value > 4096.0)
+      throw std::invalid_argument("invalid IMU noise variance multiplier");
+  return std::max(a.noise_variance_scale, b.noise_variance_scale);
+}
 
 /**
  * @brief Struct for a collection of camera measurements.

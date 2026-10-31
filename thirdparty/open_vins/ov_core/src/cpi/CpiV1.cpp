@@ -230,7 +230,7 @@ void CpiV1::feed_IMU(double t_0, double t_1, Eigen::Matrix<double, 3, 1> w_m_0, 
   // With a signed dt, reverse-time noise needs the same sign so its
   // integrated covariance remains positive; F and the means stay signed.
   const Eigen::Matrix<double, 12, 12> integration_noise =
-      (delta_t < 0 ? -1.0 : 1.0) * Q_c;
+      (delta_t < 0 ? -1.0 : 1.0) * noise_variance_scale * Q_c;
 
   // Compute covariance (in this implementation, we use RK4)
   // k1-------------------------------------------------------------------------------------------------

@@ -1337,6 +1337,7 @@ bool State::create_new_cpi_integrate(double t_given) {
 
   // Compute CPI recursively toward retested t
   for (size_t i = 0; i < imu_data.size() - 1; i++) {
+    cpiv1.set_noise_variance_scale(ov_core::imu_interval_variance(imu_data[i], imu_data[i + 1]));
     cpiv1.feed_IMU(imu_data[i].timestamp, imu_data[i + 1].timestamp, imu_data[i].wm, imu_data[i].am, imu_data[i + 1].wm, imu_data[i + 1].am);
   }
 

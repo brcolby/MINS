@@ -60,6 +60,7 @@ void Propagator::propagate(double timestamp) {
 
     // Compute CPI information if cpiv1 is valid
     if (cpiv1 != nullptr) {
+      cpiv1->set_noise_variance_scale(ov_core::imu_interval_variance(data[i], data[i + 1]));
       cpiv1->feed_IMU(data[i].timestamp, data[i + 1].timestamp, data[i].wm, data[i].am, data[i + 1].wm, data[i + 1].am);
       State::CPI cpi;
       cpi.t = data[i + 1].timestamp;
@@ -220,6 +221,7 @@ void Propagator::predict_and_compute(const ImuData &data_minus, const ImuData &d
   Qc.block(9, 9, 3, 3) = pow(state->op->imu->sigma_ab, 2) * dt * Matrix<double, 3, 3>::Identity();
 
   // Compute the noise injected into the state over the interval
+  Qc *= ov_core::imu_interval_variance(data_minus, data_plus);
   Qd = G * Qc * G.transpose();
   Qd = 0.5 * (Qd + Qd.transpose());
 
@@ -349,6 +351,7 @@ ImuData Propagator::interpolate_data(const ImuData &imu_1, const ImuData &imu_2,
   // interpolate between the two times
   ImuData data;
   data.timestamp = timestamp;
+  data.noise_variance_scale = ov_core::imu_interval_variance(imu_1, imu_2);
   data.am = (1 - lambda) * imu_1.am + lambda * imu_2.am;
   data.wm = (1 - lambda) * imu_1.wm + lambda * imu_2.wm;
   return data;

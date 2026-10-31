@@ -39,6 +39,11 @@ public:
       reason = "disabled";
       return;
     }
+    if (sample.noise_variance_scale != 1.0) {
+      samples.clear();
+      cameras.clear();
+      return reject("imu_gap");
+    }
     if (!samples.empty() &&
         sample.timestamp - samples.back().timestamp > 0.05) {
       samples.clear();
